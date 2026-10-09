@@ -13,13 +13,17 @@ from sqlalchemy.orm import Session
 
 from backend import crud
 from backend.database import get_db, init_db
-from backend.models import Campaign
+from backend.models import Campaign, Document, ExtractionResult
 from backend.schemas import (
     CampaignCreate,
     CampaignListPaginated,
+    DocumentWithExtraction,
+    ExtractionResultFull,
+    ExtractionResultResponse,
     PublicCampaign,
     SubmissionResponse,
 )
+from backend.services.pipeline import run_document_extraction
 
 MAX_FILE_BYTES = 10 * 1024 * 1024
 MAX_DOCUMENTS = 4
@@ -132,3 +136,36 @@ async def submit_campaign(
     finally:
         for upload in documents:
             await upload.close()
+
+
+@app.get("/api/documents/{document_id}", response_model=DocumentWithExtraction)
+def get_document(document_id: int, db: Database) -> Document:
+    doc = crud.get_document_by_id(db, document_id)
+    if doc is None:
+        raise HTTPException(404, "Document not found")
+    return doc
+
+
+@app.post("/api/documents/{document_id}/extract", response_model=ExtractionResultResponse)
+async def extract_document(document_id: int, db: Database) -> ExtractionResult:
+    doc = crud.get_document_by_id(db, document_id)
+    if doc is None:
+        raise HTTPException(404, "Document not found")
+    try:
+        result = await run_document_extraction(db, document_id)
+        return result
+    except FileNotFoundError as exc:
+        raise HTTPException(404, str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(500, f"Extraction failed: {exc}") from exc
+
+
+@app.get("/api/documents/{document_id}/extraction", response_model=ExtractionResultFull)
+def get_document_extraction(document_id: int, db: Database) -> ExtractionResult:
+    doc = crud.get_document_by_id(db, document_id)
+    if doc is None:
+        raise HTTPException(404, "Document not found")
+    result = crud.get_extraction_by_document(db, document_id)
+    if result is None:
+        raise HTTPException(404, "Extraction result not found for this document")
+    return result

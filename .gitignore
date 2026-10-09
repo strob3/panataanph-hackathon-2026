@@ -25,6 +25,7 @@ storage/*
 node_modules/
 dist/
 .pytest_cache/
+.venv
 .env
 .env.local
 .e2e/
