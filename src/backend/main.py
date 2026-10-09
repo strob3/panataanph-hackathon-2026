@@ -19,17 +19,29 @@ from backend import crud
 from backend.auth import CurrentUser, AdminUser, router as auth_router
 from backend.admin import router as admin_router
 from backend.database import get_db, init_db
-from backend.models import Campaign, DonationQRCode, FundUpdate
+from backend.models import (
+    Campaign,
+    Document,
+    DonationQRCode,
+    ExtractionResult,
+    FundUpdate,
+)
+
 from backend.schemas import (
     CampaignCreate,
     CampaignListPaginated,
     CampaignResponse,
+    DocumentWithExtraction,
+    ExtractionResultFull,
+    ExtractionResultResponse,
     PublicCampaign,
     PublicFinding,
     PublicFundEntry,
     SubmissionResponse,
 )
+
 from backend.services.scoring import MIN_VERIFICATION_SCORE
+from backend.services.pipeline import run_document_extraction
 
 MAX_FILE_BYTES = 10 * 1024 * 1024
 MAX_DOCUMENTS = 4
@@ -315,6 +327,89 @@ def report_funds(public_id: str, data: FundUpdateCreate, db: Database, user: Cur
     db.refresh(entry)
     return entry
 
+@app.get("/api/documents/{document_id}", response_model=DocumentWithExtraction)
+def get_document(document_id: int, db: Database) -> Document:
+    doc = crud.get_document_by_id(db, document_id)
+
+    if doc is None:
+        raise HTTPException(404, "Document not found")
+
+    return doc
+
+
+@app.post(
+    "/api/documents/{document_id}/extract",
+    response_model=ExtractionResultResponse
+)
+async def extract_document(
+    document_id: int,
+    db: Database
+) -> ExtractionResult:
+
+    doc = crud.get_document_by_id(
+        db,
+        document_id
+    )
+
+    if doc is None:
+        raise HTTPException(
+            404,
+            "Document not found"
+        )
+
+    try:
+        result = await run_document_extraction(
+            db,
+            document_id
+        )
+
+        return result
+
+    except FileNotFoundError as exc:
+        raise HTTPException(
+            404,
+            str(exc)
+        ) from exc
+
+    except Exception as exc:
+        raise HTTPException(
+            500,
+            f"Extraction failed: {exc}"
+        ) from exc
+
+
+@app.get(
+    "/api/documents/{document_id}/extraction",
+    response_model=ExtractionResultFull
+)
+def get_document_extraction(
+    document_id: int,
+    db: Database
+) -> ExtractionResult:
+
+    doc = crud.get_document_by_id(
+        db,
+        document_id
+    )
+
+    if doc is None:
+        raise HTTPException(
+            404,
+            "Document not found"
+        )
+
+    result = crud.get_extraction_by_document(
+        db,
+        document_id
+    )
+
+    if result is None:
+        raise HTTPException(
+            404,
+            "Extraction result not found for this document"
+        )
+
+    return result
 
 class FundReview(BaseModel):
     model_config = ConfigDict(str_strip_whitespace=True, extra="forbid")
