@@ -47,6 +47,8 @@ class UrgencyLevel(str, Enum):
 class CampaignCreate(BaseModel):
     """Schema for creating a new campaign (organizer submission)."""
 
+    model_config = ConfigDict(str_strip_whitespace=True, allow_inf_nan=False)
+
     # Organizer info
     organizer_name: str = Field(..., min_length=1, max_length=255)
     organizer_email: str | None = Field(default=None, max_length=255)
@@ -164,6 +166,33 @@ class CampaignListPaginated(BaseModel):
     total: int
     skip: int
     limit: int
+
+
+class PublicFinding(BaseModel):
+    """Public score values, excluding private reviewer notes."""
+
+    model_config = ConfigDict(from_attributes=True)
+    criterion: str
+    points_awarded: int
+    points_possible: int
+
+
+class PublicCampaign(CampaignListResponse):
+    """Allowlisted public metadata; never documents, contacts, or admin notes."""
+
+    description: str
+    beneficiaries: str | None
+    target_amount: float
+    payment_method: str | None
+    payment_details: str | None
+    updated_at: datetime
+    findings: list[PublicFinding]
+
+
+class SubmissionResponse(BaseModel):
+    public_id: str
+    status: Literal["pending"] = "pending"
+    documents_received: int
 
 
 # ============================================================================
