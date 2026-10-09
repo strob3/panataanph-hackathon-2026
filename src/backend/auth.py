@@ -10,17 +10,26 @@ from urllib.parse import urlsplit
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel, ConfigDict, Field, field_validator
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from backend.database import get_db
 from backend.models import AuthSession, User
+from backend.security import login_limiter, register_limiter, require_rate_limit
 
 router = APIRouter(prefix="/api/auth", tags=["accounts"])
 Database = Annotated[Session, Depends(get_db)]
 SESSION_COOKIE = "panataanph_session"
 SESSION_SECONDS = 8 * 60 * 60
+
+
+def cleanup_expired_sessions(db: Session) -> int:
+    """Delete expired AuthSession records and return count deleted."""
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    result = db.execute(delete(AuthSession).where(AuthSession.expires_at <= now))
+    db.commit()
+    return int(result.rowcount or 0)
 
 
 class UserResponse(BaseModel):
@@ -110,7 +119,12 @@ def admin_user(user: CurrentUser) -> User:
 AdminUser = Annotated[User, Depends(admin_user)]
 
 
-@router.post("/register", response_model=UserResponse, status_code=201)
+@router.post(
+    "/register",
+    response_model=UserResponse,
+    status_code=201,
+    dependencies=[Depends(require_rate_limit(register_limiter, "register"))],
+)
 def register(data: RegisterInput, request: Request, db: Database) -> User:
     require_same_origin(request)
     user = User(name=data.name, email=data.email, password_hash=hash_password(data.password), role="organizer", verified=False)
@@ -124,9 +138,14 @@ def register(data: RegisterInput, request: Request, db: Database) -> User:
     return user
 
 
-@router.post("/login", response_model=UserResponse)
+@router.post(
+    "/login",
+    response_model=UserResponse,
+    dependencies=[Depends(require_rate_limit(login_limiter, "login"))],
+)
 def login(data: LoginInput, request: Request, response: Response, db: Database) -> User:
     require_same_origin(request)
+    cleanup_expired_sessions(db)
     user = db.scalar(select(User).where(User.email == data.email))
     # Do the same password work for unknown accounts to avoid a timing oracle.
     fallback = "scrypt$00000000000000000000000000000000$" + "0" * 128

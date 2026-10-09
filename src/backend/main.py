@@ -16,9 +16,10 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from backend import crud
-from backend.auth import CurrentUser, AdminUser, router as auth_router
+from backend.auth import CurrentUser, AdminUser, cleanup_expired_sessions, router as auth_router
 from backend.admin import router as admin_router
-from backend.database import get_db, init_db
+from backend.database import SessionLocal, get_db, init_db
+from backend.security import require_rate_limit, submit_limiter
 from backend.models import (
     Campaign,
     Document,
@@ -59,6 +60,8 @@ FILE_TYPES = {
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     init_db()
+    with SessionLocal() as session:
+        cleanup_expired_sessions(session)
     yield
 
 
@@ -172,7 +175,12 @@ async def save_upload(upload: UploadFile, saved: list[Path], *, image_only: bool
     return path, filename, file_type[2], len(contents)
 
 
-@app.post("/api/submissions", response_model=SubmissionResponse, status_code=201)
+@app.post(
+    "/api/submissions",
+    response_model=SubmissionResponse,
+    status_code=201,
+    dependencies=[Depends(require_rate_limit(submit_limiter, "submissions"))],
+)
 async def submit_campaign(
     db: Database,
     user: CurrentUser,
