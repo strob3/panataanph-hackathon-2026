@@ -10,7 +10,10 @@ export default defineConfig({
     host: "127.0.0.1",
     port: 5173,
     proxy: {
-      "/api": process.env.PANATAANPH_API_TARGET || "http://127.0.0.1:8000",
+      "/api": {
+        target: process.env.PANATAANPH_API_TARGET || "http://127.0.0.1:8000",
+        changeOrigin: false,
+      },
     },
   },
 });

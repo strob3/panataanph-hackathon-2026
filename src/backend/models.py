@@ -13,7 +13,7 @@ Tables:
     - verification_findings: Per-criterion score breakdown
 """
 
-from datetime import datetime
+from datetime import date, datetime
 
 from sqlalchemy import (
     ForeignKey,
@@ -22,11 +22,49 @@ from sqlalchemy import (
     String,
     Text,
     DateTime,
+    Date,
+    Boolean,
     func,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from backend.database import Base
+
+
+class User(Base):
+    """Organizer or explicitly provisioned administrator/LGU account."""
+
+    __tablename__ = "users"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    email: Mapped[str] = mapped_column(String(255), unique=True, nullable=False, index=True)
+    password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
+    role: Mapped[str] = mapped_column(String(20), nullable=False, default="organizer")
+    verified: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+
+class AuthSession(Base):
+    """Only session token digests are retained in SQLite."""
+
+    __tablename__ = "auth_sessions"
+
+    token_hash: Mapped[str] = mapped_column(String(64), primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    user: Mapped["User"] = relationship("User")
+
+
+class AccountReview(Base):
+    __tablename__ = "account_reviews"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
+    reviewer_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
+    verified: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    reason: Mapped[str] = mapped_column(Text, nullable=False)
+    reviewed_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
 
 # ============================================================================
@@ -40,6 +78,7 @@ class Campaign(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     public_id: Mapped[str] = mapped_column(String(36), unique=True, nullable=False, index=True)
+    owner_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True, index=True)
 
     # Organizer information
     organizer_name: Mapped[str] = mapped_column(String(255), nullable=False)
@@ -77,6 +116,13 @@ class Campaign(Base):
     )
 
     # Relationships
+    owner: Mapped["User | None"] = relationship("User")
+    qr_codes: Mapped[list["DonationQRCode"]] = relationship(
+        "DonationQRCode", back_populates="campaign", cascade="all, delete-orphan"
+    )
+    fund_updates: Mapped[list["FundUpdate"]] = relationship(
+        "FundUpdate", back_populates="campaign", cascade="all, delete-orphan"
+    )
     documents: Mapped[list["Document"]] = relationship(
         "Document", back_populates="campaign", cascade="all, delete-orphan"
     )
@@ -100,6 +146,39 @@ class Campaign(Base):
 # ============================================================================
 # Documents
 # ============================================================================
+
+class DonationQRCode(Base):
+    """Public donation QR image, distinct from confidential evidence."""
+
+    __tablename__ = "donation_qr_codes"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    public_id: Mapped[str] = mapped_column(String(36), unique=True, nullable=False, index=True)
+    campaign_id: Mapped[int] = mapped_column(ForeignKey("campaigns.id"), nullable=False)
+    label: Mapped[str] = mapped_column(String(100), nullable=False)
+    storage_path: Mapped[str] = mapped_column(String(500), nullable=False)
+    file_type: Mapped[str] = mapped_column(String(50), nullable=False)
+    campaign: Mapped["Campaign"] = relationship("Campaign", back_populates="qr_codes")
+
+
+class FundUpdate(Base):
+    """Organizer reported cash received/spent, published after human review."""
+
+    __tablename__ = "fund_updates"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    public_id: Mapped[str] = mapped_column(String(36), unique=True, nullable=False, index=True)
+    campaign_id: Mapped[int] = mapped_column(ForeignKey("campaigns.id"), nullable=False)
+    kind: Mapped[str] = mapped_column(String(20), nullable=False)
+    amount_centavos: Mapped[int] = mapped_column(Integer, nullable=False)
+    description: Mapped[str] = mapped_column(Text, nullable=False)
+    occurred_on: Mapped[date] = mapped_column(Date, nullable=False)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="pending")
+    reviewed_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    review_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    campaign: Mapped["Campaign"] = relationship("Campaign", back_populates="fund_updates")
+
 
 class Document(Base):
     """Metadata for an uploaded supporting document (PDF, image, etc.)."""
@@ -208,6 +287,9 @@ class Review(Base):
     # Status transition tracking
     previous_status: Mapped[str | None] = mapped_column(String(20), nullable=True)
     new_status: Mapped[str] = mapped_column(String(20), nullable=False)
+    threshold_override: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="0")
+    override_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    warnings_resolved: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="0")
 
     # Timestamp
     reviewed_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())

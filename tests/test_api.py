@@ -30,7 +30,11 @@ def client(db: Session, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iter
         yield db
 
     main.app.dependency_overrides[get_db] = database
-    yield TestClient(main.app)
+    browser = TestClient(main.app)
+    credentials = {"name": "Test Organizer", "email": "organizer@example.com", "password": "test-password-123"}
+    assert browser.post("/api/auth/register", json=credentials).status_code == 201
+    assert browser.post("/api/auth/login", json={key: credentials[key] for key in ["email", "password"]}).status_code == 200
+    yield browser
     main.app.dependency_overrides.clear()
 
 
@@ -50,7 +54,7 @@ def campaign_data() -> dict:
 
 
 def test_directory_only_returns_verified_and_filters(client: TestClient, db: Session, campaign_data: dict) -> None:
-    verified = crud.create_campaign(db, **campaign_data, status="verified", admin_notes="Confidential")
+    verified = crud.create_campaign(db, **campaign_data, status="verified", verification_score=85, admin_notes="Confidential")
     pending = crud.create_campaign(db, **{**campaign_data, "title": "Pending campaign"})
     for status in ["under_review", "needs_information", "rejected"]:
         crud.create_campaign(db, **campaign_data, status=status)
@@ -68,13 +72,13 @@ def test_directory_only_returns_verified_and_filters(client: TestClient, db: Ses
 
 
 def test_public_detail_excludes_private_evidence(client: TestClient, db: Session, campaign_data: dict) -> None:
-    campaign = crud.create_campaign(db, **campaign_data, status="verified", admin_notes="Private note", verification_score=30)
+    campaign = crud.create_campaign(db, **campaign_data, status="verified", admin_notes="Private note", verification_score=85)
     crud.create_document(db, campaign.id, "private/id.pdf", "id.pdf", "pdf", 123)
     crud.create_finding(db, campaign.id, "permits", 30, 30, "Sensitive reviewer detail")
     result = client.get(f"/api/campaigns/{campaign.public_id}")
     assert result.status_code == 200
     public = result.json()
-    assert public["verification_score"] == 30
+    assert public["verification_score"] == 85
     assert public["findings"] == [{"criterion": "permits", "points_awarded": 30, "points_possible": 30}]
     for name in ["organizer_email", "organizer_phone", "admin_notes", "documents", "score_breakdown", "organization_registration_number"]:
         assert name not in public

@@ -1,85 +1,160 @@
-"""Password, session, and role helpers for local PanataanPH accounts."""
+"""Local accounts and revocable cookie sessions; no external identity provider."""
 
 import hashlib
 import hmac
-import os
+import re
 import secrets
 from datetime import datetime, timedelta, timezone
+from typing import Annotated
+from urllib.parse import urlsplit
 
-from fastapi import HTTPException, Request, Response
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from backend.models import Account, AuthSession
+from backend.database import get_db
+from backend.models import AuthSession, User
 
-SESSION_COOKIE = "panataan_session"
-SESSION_DAYS = 7
-PASSWORD_ITERATIONS = 310_000
+router = APIRouter(prefix="/api/auth", tags=["accounts"])
+Database = Annotated[Session, Depends(get_db)]
+SESSION_COOKIE = "panataanph_session"
+SESSION_SECONDS = 8 * 60 * 60
+
+
+class UserResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    name: str
+    email: str
+    role: str
+    verified: bool
+
+
+class LoginInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    email: str = Field(max_length=254)
+    password: str = Field(min_length=10, max_length=128)
+
+    @field_validator("email")
+    @classmethod
+    def validate_email(cls, value: str) -> str:
+        value = value.strip().casefold()
+        if not re.fullmatch(r"[^\s@]+@[^\s@]+\.[^\s@]+", value):
+            raise ValueError("Valid email required")
+        return value
+
+
+class RegisterInput(LoginInput):
+    name: str = Field(min_length=1, max_length=120)
+
+    @field_validator("name")
+    @classmethod
+    def validate_name(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("Name required")
+        return value.strip()
 
 
 def hash_password(password: str) -> str:
     salt = secrets.token_bytes(16)
-    digest = hashlib.pbkdf2_hmac("sha256", password.encode(), salt, PASSWORD_ITERATIONS)
-    return f"pbkdf2_sha256${PASSWORD_ITERATIONS}${salt.hex()}${digest.hex()}"
+    digest = hashlib.scrypt(password.encode(), salt=salt, n=16384, r=8, p=1)
+    return f"scrypt${salt.hex()}${digest.hex()}"
 
 
-def verify_password(password: str, encoded: str) -> bool:
-    try:
-        algorithm, iterations, salt_hex, expected = encoded.split("$")
-        if algorithm != "pbkdf2_sha256":
-            return False
-        actual = hashlib.pbkdf2_hmac(
-            "sha256", password.encode(), bytes.fromhex(salt_hex), int(iterations)
-        ).hex()
-        return hmac.compare_digest(actual, expected)
-    except (TypeError, ValueError):
+def check_password(password: str, encoded: str) -> bool:
+    algorithm, salt, expected = encoded.split("$")
+    if algorithm != "scrypt":
         return False
+    digest = hashlib.scrypt(password.encode(), salt=bytes.fromhex(salt), n=16384, r=8, p=1)
+    return hmac.compare_digest(digest.hex(), expected)
 
 
-def create_session(db: Session, account: Account, response: Response) -> None:
+def require_same_origin(request: Request) -> None:
+    """Protect cookie-authenticated mutations, including login, against CSRF."""
+    if request.method in {"GET", "HEAD", "OPTIONS"}:
+        return
+    if request.headers.get("sec-fetch-site") == "cross-site":
+        raise HTTPException(403, "Cross-site request forbidden")
+    source = request.headers.get("origin") or request.headers.get("referer")
+    if source:
+        try:
+            origin = urlsplit(source)
+        except ValueError as error:
+            raise HTTPException(403, "Invalid request origin") from error
+        if origin.scheme != request.url.scheme or origin.netloc.lower() != request.headers.get("host", "").lower():
+            raise HTTPException(403, "Cross-origin request forbidden")
+
+
+def current_user(request: Request, db: Database) -> User:
+    require_same_origin(request)
+    token = request.cookies.get(SESSION_COOKIE)
+    session = db.get(AuthSession, hashlib.sha256(token.encode()).hexdigest()) if token else None
+    if session is None or session.expires_at <= datetime.now(timezone.utc).replace(tzinfo=None):
+        raise HTTPException(401, "Login required")
+    return session.user
+
+
+CurrentUser = Annotated[User, Depends(current_user)]
+
+
+def admin_user(user: CurrentUser) -> User:
+    if user.role not in {"admin", "lgu"} or not user.verified:
+        raise HTTPException(403, "Verified admin or LGU account required")
+    return user
+
+
+AdminUser = Annotated[User, Depends(admin_user)]
+
+
+@router.post("/register", response_model=UserResponse, status_code=201)
+def register(data: RegisterInput, request: Request, db: Database) -> User:
+    require_same_origin(request)
+    user = User(name=data.name, email=data.email, password_hash=hash_password(data.password), role="organizer", verified=False)
+    db.add(user)
+    try:
+        db.commit()
+    except IntegrityError as error:
+        db.rollback()
+        raise HTTPException(409, "Email already registered") from error
+    db.refresh(user)
+    return user
+
+
+@router.post("/login", response_model=UserResponse)
+def login(data: LoginInput, request: Request, response: Response, db: Database) -> User:
+    require_same_origin(request)
+    user = db.scalar(select(User).where(User.email == data.email))
+    # Do the same password work for unknown accounts to avoid a timing oracle.
+    fallback = "scrypt$00000000000000000000000000000000$" + "0" * 128
+    valid = check_password(data.password, user.password_hash if user else fallback)
+    if user is None or not valid:
+        raise HTTPException(401, "Email or password incorrect")
+    old_token = request.cookies.get(SESSION_COOKIE)
+    old_session = db.get(AuthSession, hashlib.sha256(old_token.encode()).hexdigest()) if old_token else None
+    if old_session:
+        db.delete(old_session)
     token = secrets.token_urlsafe(32)
-    token_hash = hashlib.sha256(token.encode()).hexdigest()
-    expires_at = datetime.now(timezone.utc) + timedelta(days=SESSION_DAYS)
-    db.add(AuthSession(account_id=account.id, token_hash=token_hash, expires_at=expires_at))
+    db.add(AuthSession(token_hash=hashlib.sha256(token.encode()).hexdigest(), user_id=user.id, expires_at=datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(seconds=SESSION_SECONDS)))
     db.commit()
-    response.set_cookie(
-        SESSION_COOKIE,
-        token,
-        max_age=SESSION_DAYS * 24 * 60 * 60,
-        httponly=True,
-        secure=os.getenv("PANATAANPH_COOKIE_SECURE", "false").lower() == "true",
-        samesite="lax",
-        path="/api",
-    )
+    response.set_cookie(SESSION_COOKIE, token, max_age=SESSION_SECONDS, httponly=True, secure=request.url.scheme == "https", samesite="strict", path="/api")
+    return user
 
 
-def get_current_account(request: Request, db: Session) -> Account:
+@router.get("/me", response_model=UserResponse)
+def me(user: CurrentUser) -> User:
+    return user
+
+
+@router.post("/logout", status_code=204)
+def logout(request: Request, response: Response, db: Database) -> None:
+    require_same_origin(request)
     token = request.cookies.get(SESSION_COOKIE)
-    if not token:
-        raise HTTPException(status_code=401, detail="Log in to continue")
-    token_hash = hashlib.sha256(token.encode()).hexdigest()
-    account = db.execute(
-        select(Account)
-        .join(AuthSession, AuthSession.account_id == Account.id)
-        .where(
-            AuthSession.token_hash == token_hash,
-            AuthSession.expires_at > datetime.now(timezone.utc),
-            Account.is_active.is_(True),
-        )
-    ).scalar_one_or_none()
-    if account is None:
-        raise HTTPException(status_code=401, detail="Your session has expired. Please log in again.")
-    return account
-
-
-def delete_session(request: Request, db: Session, response: Response) -> None:
-    token = request.cookies.get(SESSION_COOKIE)
-    if token:
-        token_hash = hashlib.sha256(token.encode()).hexdigest()
-        session = db.execute(
-            select(AuthSession).where(AuthSession.token_hash == token_hash)
-        ).scalar_one_or_none()
-        if session is not None:
-            db.delete(session)
-            db.commit()
-    response.delete_cookie(SESSION_COOKIE, path="/api", httponly=True, samesite="lax")
+    session = db.get(AuthSession, hashlib.sha256(token.encode()).hexdigest()) if token else None
+    if session:
+        db.delete(session)
+        db.commit()
+    response.delete_cookie(SESSION_COOKIE, path="/api", httponly=True, samesite="strict")

@@ -18,7 +18,9 @@ type Navigate = (path: string) => void;
 const message = (error: unknown) =>
   error instanceof Error ? error.message : "Unable to connect to the API. Please try again.";
 const date = (value: string) =>
-  new Date(value.endsWith("Z") ? value : `${value}Z`).toLocaleDateString("en-PH");
+  new Date(/^\d{4}-\d{2}-\d{2}$/.test(value) ? `${value}T00:00:00` : value.endsWith("Z") ? value : `${value}Z`).toLocaleDateString("en-PH");
+const money = (value: number) =>
+  new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP" }).format(value);
 
 function Notice({ children, error = false }: { children: ReactNode; error?: boolean }) {
   return (
@@ -90,6 +92,7 @@ export function SubmissionPage({
   onSubmitted: (submission: Submission) => void;
 }) {
   const [files, setFiles] = useState<Record<string, File>>({});
+  const [donationQR, setDonationQR] = useState<File>();
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const addFile = (key: string, file?: File) => {
@@ -115,10 +118,9 @@ export function SubmissionPage({
       setError("Add at least one supporting document.");
       return;
     }
-    const fields = Object.fromEntries(new FormData(event.currentTarget).entries()) as Record<
-      string,
-      string
-    >;
+    const fields = Object.fromEntries(
+      [...new FormData(event.currentTarget).entries()].filter(([, value]) => typeof value === "string"),
+    ) as Record<string, string>;
     Object.keys(fields).forEach((key) => {
       fields[key] = fields[key].trim();
     });
@@ -128,10 +130,14 @@ export function SubmissionPage({
       setError("Complete all required campaign fields.");
       return;
     }
+    if (donationQR && !fields.qr_label) {
+      setError("Add a donation QR label, including its payment provider and account name.");
+      return;
+    }
     setError("");
     setBusy(true);
     try {
-      const result = await submitCampaign(fields, Object.values(files));
+      const result = await submitCampaign(fields, Object.values(files), donationQR);
       onSubmitted(result);
       go("/verify/report");
     } catch (failure) {
@@ -167,6 +173,7 @@ export function SubmissionPage({
             <div className="mt-6 grid gap-5 md:grid-cols-2">
               <Field name="organizer_name" label="Organizer name" required maxLength={255} />
               <Field name="organization_name" label="Organization name" maxLength={255} />
+              <Field name="organization_registration_number" label="Organizer / organization registration number" maxLength={100} />
               <Field name="organizer_email" label="Email (private)" type="email" maxLength={255} />
               <Field name="organizer_phone" label="Phone (private)" type="tel" maxLength={50} />
               <Field name="title" label="Campaign title" required maxLength={500} />
@@ -210,6 +217,57 @@ export function SubmissionPage({
                 type="textarea"
               />
             </div>
+            <h2 className="mt-10 text-xl font-extrabold">Donation QR (optional)</h2>
+            <p className="mt-2 text-sm leading-6 text-muted">
+              Upload your payment provider's real QR image. This donation image and its label become
+              public only after campaign approval. Supporting evidence stays private.
+            </p>
+            <div className="mt-5 grid items-start gap-5 md:grid-cols-2">
+              <Field
+                name="qr_label"
+                label="QR label / provider and account name"
+                required={Boolean(donationQR)}
+                maxLength={100}
+              />
+              <label className="block min-w-0 text-sm font-semibold">
+                Donation QR image (PNG or JPG, up to 10 MB)
+                <input
+                  type="file"
+                  aria-label="Donation QR image"
+                  accept=".jpg,.jpeg,.png"
+                  className="mt-3 block w-full text-sm"
+                  onChange={(event) => {
+                    const file = event.target.files?.[0];
+                    if (!file) return;
+                    if (
+                      !["image/jpeg", "image/png"].includes(file.type) ||
+                      !/\.(jpe?g|png)$/i.test(file.name) ||
+                      !file.size || file.size > 10 * 1024 * 1024
+                    ) {
+                      setError("Choose a nonempty PNG or JPG donation QR image up to 10 MB.");
+                      event.target.value = "";
+                      return;
+                    }
+                    setDonationQR(file);
+                    setError("");
+                    event.target.value = "";
+                  }}
+                />
+              </label>
+            </div>
+            {donationQR && (
+              <div className="mt-4 flex min-w-0 items-center gap-3 rounded-xl bg-canvas p-3">
+                <p className="min-w-0 flex-1 break-all text-sm">{donationQR.name}</p>
+                <button
+                  type="button"
+                  className="icon-button"
+                  aria-label="Remove donation QR"
+                  onClick={() => setDonationQR(undefined)}
+                >
+                  <X size={18} />
+                </button>
+              </div>
+            )}
             <h2 className="mt-10 text-xl font-extrabold">Add your evidence</h2>
             <p className="mt-2 text-sm text-muted">
               Add at least one document. PDF, JPG, PNG · up to 10 MB each · up to 4 files.
@@ -278,9 +336,9 @@ export function SubmissionPage({
               ))}
             </div>
             <p className="mt-6 text-sm leading-6 text-muted">
-              Files are sent to this project's backend and kept in private storage. They are never
-              sent to external AI services. Automatic extraction is not connected yet; reviewers
-              must assess your evidence.
+              Supporting evidence is stored privately and reviewed by authorized administrators.
+              Evidence completeness is scored using fixed rules. Documents are never sent to
+              external AI services.
             </p>
             <label className="mt-5 flex items-start gap-3 text-sm leading-6">
               <input type="checkbox" required className="mt-1.5" />I agree to submit these documents
@@ -323,15 +381,15 @@ export function SubmissionReport({
           <>
             <p className="mt-4 leading-7 text-muted">
               Your {submission.documents_received} supporting documents were saved privately. Your
-              campaign will appear in the public directory only after a human administrator verifies
-              it.
+              campaign will appear in the public directory after human approval and the required
+              evidence score, or an administrator's documented score exception.
             </p>
             <p className="mt-5 text-sm font-semibold">Submission reference</p>
             <p className="mt-2 break-all rounded-xl bg-canvas p-4 font-mono text-sm">
               {submission.public_id}
             </p>
             <p className="mt-4 text-sm text-muted">
-              Keep this reference. No evidence score or extraction result has been generated.
+              Keep this reference. Check My Campaigns for review status and administrator feedback.
             </p>
           </>
         ) : (
@@ -340,7 +398,10 @@ export function SubmissionReport({
           </p>
         )}
         <div className="mt-7 flex flex-wrap gap-3">
-          <button className="button button-primary" onClick={() => go("/verify")}>
+          <button className="button button-primary" onClick={() => go("/my-campaigns")}>
+            My Campaigns
+          </button>
+          <button className="button button-secondary" onClick={() => go("/verify")}>
             Submit a Fundraiser
           </button>
           <button className="button button-secondary" onClick={() => go("/campaigns")}>
@@ -367,8 +428,8 @@ function CampaignCard({ campaign, go }: { campaign: Campaign; go: Navigate }) {
         {campaign.organization_name || campaign.organizer_name}
       </p>
       <h2 className="mt-2 text-xl font-extrabold">{campaign.title}</h2>
-      <p className="mt-2 flex items-center gap-1.5 text-sm text-muted">
-        <MapPin size={15} />
+      <p className="mt-2 flex items-start gap-1.5 text-sm text-muted">
+        <MapPin size={15} className="mt-0.5 shrink-0" />
         {campaign.location}
       </p>
       <div className="mt-5 rounded-2xl bg-canvas p-4">
@@ -641,9 +702,14 @@ export function CampaignReport({ id, go }: { id: string; go: Navigate }) {
               </div>
               <h2 className="mt-5 text-xl font-extrabold">Evidence Score</h2>
               <p className="mt-2 text-sm leading-6 text-muted">
-                Evidence completeness, as recorded in the database. This is not a probability of
-                legitimacy.
+                Evidence completeness, calculated using fixed rules. Standard publication threshold:
+                {" "}{campaign.minimum_score}/100, with human approval. Score does not guarantee legitimacy.
               </p>
+              {campaign.threshold_overridden && (
+                <p className="mt-4 rounded-xl bg-amber-50 p-3 text-sm font-semibold text-amber-800">
+                  Approved with a documented administrator score exception.
+                </p>
+              )}
             </section>
             <section className="report-card">
               <h2 className="text-xl font-extrabold">Score Breakdown</h2>
@@ -651,9 +717,9 @@ export function CampaignReport({ id, go }: { id: string; go: Navigate }) {
                 <div className="mt-6 space-y-5">
                   {campaign.findings.map((finding) => (
                     <div key={finding.criterion}>
-                      <div className="mb-2 flex justify-between text-sm">
+                      <div className="mb-2 flex justify-between gap-3 text-sm">
                         <span className="font-semibold capitalize">{finding.criterion}</span>
-                        <span>
+                        <span className="shrink-0">
                           {finding.points_awarded} / {finding.points_possible}
                         </span>
                       </div>
@@ -690,15 +756,7 @@ export function CampaignReport({ id, go }: { id: string; go: Navigate }) {
               {[
                 ["Purpose", campaign.purpose],
                 ["Beneficiaries", campaign.beneficiaries || "Not provided"],
-                [
-                  "Target",
-                  new Intl.NumberFormat("en-PH", {
-                    style: "currency",
-                    currency: "PHP",
-                  }).format(campaign.target_amount),
-                ],
-                ["Payment method", campaign.payment_method || "Not provided"],
-                ["Donation details", campaign.payment_details || "Not provided"],
+                ["Target", money(campaign.target_amount)],
               ].map(([label, value]) => (
                 <div key={label} className="grid gap-2 py-4 sm:grid-cols-[12rem_1fr]">
                   <dt className="text-sm text-muted">{label}</dt>
@@ -706,6 +764,90 @@ export function CampaignReport({ id, go }: { id: string; go: Navigate }) {
                 </div>
               ))}
             </dl>
+          </section>
+          <section className="report-card mt-5" aria-labelledby="donation-heading">
+            <h2 id="donation-heading" className="text-xl font-extrabold">Donation Methods</h2>
+            <p className="mt-2 text-sm leading-6 text-muted">
+              Organizer-provided payment details reviewed with this campaign. Confirm the account
+              name and recipient in your payment app before sending funds.
+            </p>
+            {campaign.payment_method || campaign.payment_details ? (
+              <dl className="mt-5 space-y-4">
+                {campaign.payment_method && <div><dt className="text-sm text-muted">Payment method</dt><dd className="mt-1 whitespace-pre-wrap break-words font-semibold">{campaign.payment_method}</dd></div>}
+                {campaign.payment_details && <div><dt className="text-sm text-muted">Account details</dt><dd className="mt-1 whitespace-pre-wrap break-words font-semibold">{campaign.payment_details}</dd></div>}
+              </dl>
+            ) : !campaign.qr_codes.length && (
+              <p className="mt-5 rounded-xl bg-canvas p-4 text-sm text-muted">
+                No donation methods have been published for this campaign.
+              </p>
+            )}
+            {campaign.qr_codes.length ? (
+              <div className="mt-6 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+                {campaign.qr_codes.map((qr) => (
+                  <figure key={qr.public_id} className="min-w-0 rounded-2xl border border-line p-4">
+                    <img
+                      src={qr.image_url}
+                      alt={`Donation QR for ${qr.label}`}
+                      className="mx-auto aspect-square w-full max-w-64 object-contain"
+                      loading="lazy"
+                    />
+                    <figcaption className="mt-3 break-words text-center text-sm font-bold">{qr.label}</figcaption>
+                  </figure>
+                ))}
+              </div>
+            ) : (
+              <p className="mt-4 text-sm text-muted">No donation QR image has been provided.</p>
+            )}
+          </section>
+          <section className="report-card mt-5" aria-labelledby="transparency-heading">
+            <h2 id="transparency-heading" className="text-xl font-extrabold">Fund Transparency</h2>
+            <p className="mt-2 text-sm leading-6 text-muted">
+              Organizer-reported funds, reviewed by administrators before publication. PanataanPH
+              does not collect payments or independently confirm bank balances.
+            </p>
+            <dl className="mt-6 grid gap-4 sm:grid-cols-3">
+              {[
+                ["Reported received", campaign.transparency.received_centavos],
+                ["Reported spent", campaign.transparency.spent_centavos],
+                ["Reported balance", campaign.transparency.balance_centavos],
+              ].map(([label, cents]) => (
+                <div key={label} className="min-w-0 rounded-2xl bg-canvas p-4">
+                  <dt className="text-sm text-muted">{label}</dt>
+                  <dd className="mt-2 break-words text-xl font-extrabold">{money(Number(cents) / 100)}</dd>
+                </div>
+              ))}
+            </dl>
+            <div className="mt-5">
+              <p className="text-sm font-semibold">
+                {money(campaign.transparency.received_centavos / 100)} reported of {money(campaign.target_amount)} target
+              </p>
+              <progress
+                value={campaign.transparency.received_centavos / 100}
+                max={campaign.target_amount || 1}
+                aria-label="Reported funds received toward target"
+                className="mt-3 h-2 w-full accent-brand"
+              />
+            </div>
+            {campaign.transparency.entries.length ? (
+              <ul className="mt-6 divide-y divide-line">
+                {campaign.transparency.entries.map((entry) => (
+                  <li key={entry.public_id} className="flex flex-col justify-between gap-3 py-4 sm:flex-row">
+                    <div className="min-w-0">
+                      <p className="whitespace-pre-wrap break-words text-sm font-semibold">{entry.description}</p>
+                      <p className="mt-1 text-xs text-muted">{date(entry.occurred_on)} · Admin-reviewed report</p>
+                    </div>
+                    <p className={`shrink-0 text-sm font-bold ${entry.kind === "received" ? "text-success" : "text-ink"}`}>
+                      {entry.kind === "received" ? "Received" : "Spent"} {money(entry.amount_centavos / 100)}
+                    </p>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="mt-5 rounded-xl bg-canvas p-4 text-sm leading-6 text-muted">
+                No approved fund reports yet. Zero totals mean no published reports; they do not
+                confirm the campaign's actual receipts or balance.
+              </p>
+            )}
           </section>
           <p className="mt-5 text-sm text-muted">
             Original supporting documents and private reviewer notes are confidential.

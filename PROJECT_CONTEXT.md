@@ -10,6 +10,9 @@ The project addresses the difficulty of distinguishing well-documented relief ca
 
 - **Public Campaign Directory:** Browse, search, and filter relief campaigns by location, cause, urgency, and verification status.
 - **Campaign Submission:** Allow organizers to submit campaign details and upload supporting documents.
+- **Organizer Accounts:** Login is required for submissions and private campaign/fund-report management. Admins/LGU reviewers verify organizer identity before publication.
+- **Donation Methods:** Publish organizer-supplied donation QR images and payment instructions only after campaign approval; supporting evidence remains private.
+- **Funds Transparency:** Publish dated received/spent reports after admin review, with target progress and recorded totals. These are organizer reports, not automatic payment reconciliation.
 - **Local AI Document Extraction:** Extract text from uploaded PDFs and images, then use a locally running LLM to structure relevant information.
 - **Evidence Completeness Score:** Calculate a transparent score based on submitted evidence and predefined rules.
 - **Admin Review Dashboard:** Let admins inspect original documents, review extracted information, investigate discrepancies, and make final decisions.
@@ -49,6 +52,8 @@ The Verification Score ranges from 0 to 100 and is calculated by deterministic a
 
 The score represents the completeness and consistency of submitted evidence. It is not a guarantee of authenticity, legitimacy, or proper use of donations.
 
+The minimum score for ordinary approval eligibility is 80/100. Scores never publish campaigns automatically. Human approval, a verified organizer account, and explicit review and resolution of warnings and major inconsistencies are required. Admins can request additional private evidence or approve below the threshold with an explicit exception and recorded reason. Public details identify such exceptions. Requested evidence returns the campaign to `under_review` and clears its previous score. Missing the threshold does not label the campaign fraudulent. Revoking account verification removes its campaigns from public endpoints.
+
 Potential criteria include:
 
 - Applicable permits or authorizations
@@ -61,7 +66,7 @@ Legal requirements and the applicability of specific permits must be reviewed se
 
 ## Technology Stack
 
-- **Frontend:** Next.js, TypeScript, Tailwind CSS
+- **Frontend:** React/Vite, TypeScript, Tailwind CSS (integrated responsive frontend)
 - **Backend:** Python, FastAPI
 - **OCR:** PaddleOCR
 - **Local LLM runtime:** Ollama
@@ -72,7 +77,7 @@ Legal requirements and the applicability of specific permits must be reviewed se
 
 ## Architecture
 
-Next.js communicates with FastAPI. FastAPI coordinates document parsing, OCR, LLM inference through Ollama, response validation, and persistence. SQLite stores campaign information, document metadata, extraction results, verification findings, reports, and review history.
+React/Vite communicates with FastAPI through a same-origin API proxy. SQLite stores accounts, revocable sessions, campaign ownership, private document metadata, donation QR metadata, fund reports, findings, and review history. Manual admin/LGU verification is implemented. Document parsing, OCR, and Ollama inference remain planned phases; they must stay local when implemented.
 
 For the hackathon demonstration, the frontend, backend, model runtime, database, and document processing run on the same host machine. After the model and dependencies have been downloaded, the core document-analysis workflow must be demonstrated without an internet connection.
 

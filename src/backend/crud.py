@@ -17,8 +17,11 @@ Usage:
 import uuid
 from datetime import datetime
 
-from sqlalchemy import select, func as sql_func
+from sqlalchemy import and_, exists, or_, select, func as sql_func
 from sqlalchemy.orm import Session
+from sqlalchemy.sql.elements import ColumnElement
+
+from backend.services.scoring import MIN_VERIFICATION_SCORE
 
 from backend.models import (
     Campaign,
@@ -33,6 +36,24 @@ from backend.models import (
 # ============================================================================
 # Campaign CRUD
 # ============================================================================
+
+
+def public_campaign_filter() -> ColumnElement[bool]:
+    """Legacy reviewed demo rows have no owner; new submissions always have one."""
+    latest_review = select(sql_func.max(Review.id)).where(Review.campaign_id == Campaign.id).correlate(Campaign).scalar_subquery()
+    approved_exception = exists(select(Review.id).where(
+        Review.id == latest_review,
+        Review.decision == "verified",
+        Review.new_status == "verified",
+        Review.threshold_override.is_(True),
+        Review.warnings_resolved.is_(True),
+        sql_func.length(sql_func.trim(Review.override_reason)) > 0,
+    ))
+    return and_(
+        Campaign.status == "verified",
+        or_(Campaign.verification_score >= MIN_VERIFICATION_SCORE, approved_exception),
+        or_(Campaign.owner_id.is_(None), Campaign.owner.has(verified=True)),
+    )
 
 def create_campaign(db: Session, *, commit: bool = True, **kwargs) -> Campaign:
     """
@@ -76,6 +97,7 @@ def list_campaigns(
     location: str | None = None,
     urgency: str | None = None,
     search: str | None = None,
+    public_only: bool = False,
     skip: int = 0,
     limit: int = 20,
 ) -> list[Campaign]:
@@ -92,6 +114,9 @@ def list_campaigns(
         limit: Maximum number of records to return.
     """
     stmt = select(Campaign)
+
+    if public_only:
+        stmt = stmt.where(public_campaign_filter())
 
     if status is not None:
         stmt = stmt.where(Campaign.status == status)
@@ -122,9 +147,13 @@ def count_campaigns(
     location: str | None = None,
     urgency: str | None = None,
     search: str | None = None,
+    public_only: bool = False,
 ) -> int:
     """Count campaigns with the same filters as list_campaigns (without pagination)."""
     stmt = select(sql_func.count(Campaign.id))
+
+    if public_only:
+        stmt = stmt.where(public_campaign_filter())
 
     if status is not None:
         stmt = stmt.where(Campaign.status == status)
@@ -303,6 +332,10 @@ def create_review(
     reason: str | None,
     previous_status: str | None,
     new_status: str,
+    *,
+    threshold_override: bool = False,
+    override_reason: str | None = None,
+    warnings_resolved: bool = False,
 ) -> Review:
     """
     Record an admin review decision for a campaign.
@@ -316,6 +349,9 @@ def create_review(
         reason=reason,
         previous_status=previous_status,
         new_status=new_status,
+        threshold_override=threshold_override,
+        override_reason=override_reason,
+        warnings_resolved=warnings_resolved,
     )
     db.add(review)
 
