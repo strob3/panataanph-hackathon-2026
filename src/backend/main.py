@@ -10,13 +10,14 @@ from typing import Annotated, AsyncIterator, Literal
 from uuid import uuid4
 
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Query, UploadFile
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from backend import crud
-from backend.auth import CurrentUser, AdminUser, cleanup_expired_sessions, router as auth_router
+from backend.auth import ALLOWED_ORIGINS, CurrentUser, AdminUser, cleanup_expired_sessions, router as auth_router
 from backend.admin import router as admin_router
 from backend.database import SessionLocal, get_db, init_db
 from backend.security import require_rate_limit, submit_limiter
@@ -66,6 +67,14 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
 
 app = FastAPI(title="PanataanPH API", lifespan=lifespan)
+if ALLOWED_ORIGINS:
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=list(ALLOWED_ORIGINS),
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
 app.include_router(auth_router)
 app.include_router(admin_router)
 Database = Annotated[Session, Depends(get_db)]
