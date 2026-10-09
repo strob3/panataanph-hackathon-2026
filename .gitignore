@@ -1,2 +1,22 @@
-# tokless
-.codegraph/
+# Python / Bytecode
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+env/
+
+# Database files
+*.db
+*.sqlite3
+data/*.db
+!data/.gitkeep
+
+# Storage / Uploads
+storage/*
+!storage/.gitkeep
+
+# IDE / System
+.vscode/
+.idea/
+.DS_Store
