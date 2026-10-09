@@ -41,7 +41,7 @@ RATE_LIMIT_ENABLED = os.getenv("PANATAANPH_RATE_LIMIT", "true").lower() in ("tru
 
 # Rate limiters for sensitive endpoints
 login_limiter = InMemoryRateLimiter(max_requests=10, window_seconds=60.0)      # 10 / min
-register_limiter = InMemoryRateLimiter(max_requests=5, window_seconds=60.0)    # 5 / min
+register_limiter = InMemoryRateLimiter(max_requests=10, window_seconds=60.0)   # 10 / min
 submit_limiter = InMemoryRateLimiter(max_requests=20, window_seconds=60.0)     # 20 / min
 
 
