@@ -4,6 +4,7 @@ import {
   ArrowRight,
   BadgeCheck,
   Download,
+  Flag,
   HeartHandshake,
   MapPin,
   Search,
@@ -11,7 +12,7 @@ import {
   Upload,
   X,
 } from "lucide-react";
-import { getCampaign, listCampaigns, submitCampaign } from "../lib/api";
+import { getCampaign, listCampaigns, reportCampaign, submitCampaign } from "../lib/api";
 import type { Campaign, CampaignDetail, CampaignPage, Submission } from "../lib/api";
 
 type Navigate = (path: string) => void;
@@ -684,6 +685,33 @@ export function CampaignReport({ id, go }: { id: string; go: Navigate }) {
     link.click();
     window.setTimeout(() => URL.revokeObjectURL(url), 1000);
   };
+  const [showReportModal, setShowReportModal] = useState(false);
+  const [reportSuccess, setReportSuccess] = useState(false);
+  const [reportError, setReportError] = useState("");
+  const [reportBusy, setReportBusy] = useState(false);
+
+  const submitReport = async (e: FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    if (reportBusy || !campaign) return;
+    const form = new FormData(e.currentTarget);
+    const reason = String(form.get("reason") ?? "").trim();
+    const reporterName = String(form.get("reporter_name") ?? "").trim();
+    const reporterEmail = String(form.get("reporter_email") ?? "").trim();
+    if (!reason) {
+      setReportError("Please specify a reason for your report.");
+      return;
+    }
+    setReportBusy(true);
+    setReportError("");
+    try {
+      await reportCampaign(campaign.public_id, reason, reporterName || undefined, reporterEmail || undefined);
+      setReportSuccess(true);
+    } catch (failure) {
+      setReportError(message(failure));
+    } finally {
+      setReportBusy(false);
+    }
+  };
   return (
     <main className="container py-10 sm:py-14">
       <button className="button button-ghost mb-5" onClick={() => go("/campaigns")}>
@@ -912,10 +940,120 @@ export function CampaignReport({ id, go }: { id: string; go: Navigate }) {
           <p className="mt-5 text-sm text-muted">
             Original supporting documents and private reviewer notes are confidential.
           </p>
-          <button className="button button-secondary mt-6" onClick={download}>
-            <Download size={17} />
-            Download Public Report
-          </button>
+          <div className="mt-6 flex flex-wrap gap-3">
+            <button className="button button-secondary" onClick={download}>
+              <Download size={17} />
+              Download Public Report
+            </button>
+            <button
+              className="button button-ghost text-brand"
+              onClick={() => {
+                setShowReportModal(true);
+                setReportSuccess(false);
+                setReportError("");
+              }}
+            >
+              <Flag size={17} />
+              Report Fundraiser
+            </button>
+          </div>
+          {showReportModal && (
+            <div className="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4">
+              <div className="report-card w-full max-w-lg bg-white shadow-xl">
+                <div className="flex items-center justify-between border-b border-line pb-4">
+                  <div className="flex items-center gap-2 text-brand">
+                    <Flag size={20} />
+                    <h2 className="text-xl font-extrabold text-ink">Report this Campaign</h2>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setShowReportModal(false)}
+                    className="rounded-lg p-1 text-muted hover:bg-canvas hover:text-ink"
+                    aria-label="Close"
+                  >
+                    <X size={20} />
+                  </button>
+                </div>
+                {reportSuccess ? (
+                  <div className="py-6">
+                    <p
+                      role="status"
+                      className="rounded-xl bg-green-50 p-4 text-sm font-semibold text-green-800"
+                    >
+                      Report received. Our review team will independently verify this campaign.
+                    </p>
+                    <button
+                      type="button"
+                      className="button button-primary mt-6 w-full"
+                      onClick={() => {
+                        setShowReportModal(false);
+                        setReportSuccess(false);
+                      }}
+                    >
+                      Done
+                    </button>
+                  </div>
+                ) : (
+                  <form onSubmit={submitReport} className="mt-4 space-y-4">
+                    <p className="text-sm text-muted">
+                      Reports trigger administrator review. A report does not automatically label a
+                      fundraiser fraudulent.
+                    </p>
+                    {reportError && (
+                      <p role="alert" className="rounded-xl bg-red-50 p-3 text-sm text-brand">
+                        {reportError}
+                      </p>
+                    )}
+                    <label className="block text-sm font-semibold">
+                      Reason for report *
+                      <textarea
+                        name="reason"
+                        required
+                        aria-label="Reason for report"
+                        rows={3}
+                        placeholder="Describe what appears suspicious, incorrect, or mismatched..."
+                        className="mt-2 w-full rounded-xl border border-line p-3 text-sm"
+                      />
+                    </label>
+                    <label className="block text-sm font-semibold">
+                      Your name (optional)
+                      <input
+                        name="reporter_name"
+                        aria-label="Your name (optional)"
+                        className="mt-2 w-full rounded-xl border border-line p-3 text-sm"
+                      />
+                    </label>
+                    <label className="block text-sm font-semibold">
+                      Your email (optional)
+                      <input
+                        name="reporter_email"
+                        type="email"
+                        aria-label="Your email (optional)"
+                        className="mt-2 w-full rounded-xl border border-line p-3 text-sm"
+                      />
+                    </label>
+                    <div className="flex justify-end gap-3 border-t border-line pt-4">
+                      <button
+                        type="button"
+                        className="button button-secondary"
+                        onClick={() => setShowReportModal(false)}
+                        disabled={reportBusy}
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="submit"
+                        className="button button-primary"
+                        disabled={reportBusy}
+                      >
+                        {reportBusy ? "Submitting…" : "Submit Report"}
+                      </button>
+                    </div>
+                  </form>
+                )}
+              </div>
+            </div>
+          )}
         </>
       )}
     </main>

@@ -39,6 +39,7 @@ from backend.schemas import (
     PublicCampaign,
     PublicFinding,
     PublicFundEntry,
+    ReportCreate,
     SubmissionResponse,
 )
 
@@ -137,6 +138,26 @@ def published_campaign(public_id: str, db: Session) -> Campaign:
     if result is None:
         raise HTTPException(404, "Campaign not found")
     return result
+
+
+@app.post(
+    "/api/campaigns/{public_id}/report",
+    status_code=201,
+    dependencies=[Depends(require_rate_limit(submit_limiter, "report"))],
+)
+def report_campaign(public_id: str, data: ReportCreate, db: Database) -> dict:
+    target = crud.get_campaign_by_public_id(db, public_id)
+    if target is None:
+        raise HTTPException(404, "Campaign not found")
+    report = crud.create_report(
+        db,
+        campaign_id=target.id,
+        reason=data.reason,
+        reporter_name=data.reporter_name,
+        reporter_email=data.reporter_email,
+    )
+    return {"status": "submitted", "report_id": report.id}
+
 
 
 def private_file(path: str, file_type: str) -> FileResponse:

@@ -73,6 +73,16 @@ export interface AdminCampaignDetail extends AdminCampaignSummary {
     review_reason: string | null;
     created_at: string;
   }[];
+  reports?: {
+    id: number;
+    reason: string;
+    reporter_name: string | null;
+    reporter_email: string | null;
+    status: string;
+    admin_response: string | null;
+    created_at: string;
+    resolved_at: string | null;
+  }[];
 }
 
 export interface ReviewInput {
@@ -134,3 +144,10 @@ export const reviewFundUpdate = (id: string, status: "approved" | "rejected", re
     `/admin/fund-updates/${encodeURIComponent(id)}`,
     json("PATCH", { status, reason }),
   );
+
+export const resolveCampaignReport = (reportId: number, adminResponse: string, status: "reviewed" | "dismissed" = "reviewed") =>
+  request<{ status: string; report_id: number; report_status: string }>(
+    `/admin/reports/${reportId}/resolve`,
+    json("POST", { admin_response: adminResponse, status }),
+  );
+

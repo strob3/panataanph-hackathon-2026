@@ -1,6 +1,6 @@
 import { useState } from "react";
 import type { FormEvent } from "react";
-import { ArrowRight, ShieldCheck } from "lucide-react";
+import { ArrowRight, Eye, EyeOff, ShieldCheck } from "lucide-react";
 import { login, registerAccount } from "../lib/accountApi";
 import type { User } from "../lib/accountApi";
 
@@ -16,6 +16,7 @@ export function LoginPage({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [created, setCreated] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
   const next = new URLSearchParams(window.location.search).get("next");
   const switchPage = (path: string) =>
     go(`${path}${next ? `?next=${encodeURIComponent(next)}` : ""}`);
@@ -104,18 +105,28 @@ export function LoginPage({
           </label>
           <label className="block text-sm font-semibold">
             Password
-            <input
-              name="password"
-              type="password"
-              aria-label="Password"
-              required
-              minLength={register ? 10 : undefined}
-              maxLength={128}
-              autoComplete={register ? "new-password" : "current-password"}
-              disabled={busy}
-              aria-describedby={register ? "password-help" : undefined}
-              className="mt-2 w-full rounded-xl border border-line p-3"
-            />
+            <div className="relative mt-2">
+              <input
+                name="password"
+                type={showPassword ? "text" : "password"}
+                aria-label="Password"
+                required
+                minLength={register ? 10 : undefined}
+                maxLength={128}
+                autoComplete={register ? "new-password" : "current-password"}
+                disabled={busy}
+                aria-describedby={register ? "password-help" : undefined}
+                className="w-full rounded-xl border border-line p-3 pr-11"
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword((prev) => !prev)}
+                aria-label={showPassword ? "Hide password" : "Show password"}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted hover:text-ink focus:outline-none"
+              >
+                {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+              </button>
+            </div>
             {register && (
               <span id="password-help" className="mt-2 block text-xs font-normal text-muted">
                 Use 10–128 characters.

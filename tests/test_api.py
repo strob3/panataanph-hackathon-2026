@@ -152,3 +152,40 @@ def test_submission_validation(client: TestClient, db: Session, campaign_data: d
     assert client.post("/api/submissions", data={"campaign": json.dumps(campaign_data)}).status_code == 422
     assert client.post("/api/submissions", data={"campaign": json.dumps(campaign_data)}, files=[("documents", file)] * 5).status_code == 422
     assert db.scalars(select(Campaign)).all() == []
+
+
+def test_report_campaign_submission_and_validation(client: TestClient, db: Session) -> None:
+    campaign = crud.create_campaign(
+        db,
+        organizer_name="Test Organizer",
+        title="Valid Campaign",
+        description="Public relief effort",
+        purpose="Relief packs",
+        location="Cebu",
+        target_amount=10000,
+    )
+    crud.update_campaign_status(db, campaign.id, "verified")
+
+    # Valid report
+    response = client.post(
+        f"/api/campaigns/{campaign.public_id}/report",
+        json={"reason": "Suspicious GCash number provided", "reporter_email": "whistle@example.com"},
+    )
+    assert response.status_code == 201
+    data = response.json()
+    assert data["status"] == "submitted"
+    assert "report_id" in data
+
+    # Verify database
+    reports = crud.get_reports_by_campaign(db, campaign.id)
+    assert len(reports) == 1
+    assert reports[0].reason == "Suspicious GCash number provided"
+    assert reports[0].reporter_email == "whistle@example.com"
+    assert reports[0].status == "pending"
+
+    # Nonexistent campaign
+    assert client.post("/api/campaigns/nonexistent-id/report", json={"reason": "Fake"}).status_code == 404
+
+    # Validation failure: missing reason
+    assert client.post(f"/api/campaigns/{campaign.public_id}/report", json={"reason": ""}).status_code == 422
+

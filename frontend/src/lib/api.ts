@@ -105,3 +105,16 @@ export function submitCampaign(fields: Record<string, string>, files: File[], do
   }
   return request<Submission>("/submissions", { method: "POST", body: form });
 }
+
+export function reportCampaign(id: string, reason: string, reporterName?: string, reporterEmail?: string) {
+  return request<{ status: string; report_id: number }>(`/campaigns/${encodeURIComponent(id)}/report`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      reason,
+      reporter_name: reporterName || null,
+      reporter_email: reporterEmail || null,
+    }),
+  });
+}
+
