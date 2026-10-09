@@ -1,3 +1,6 @@
+# tokless
+.codegraph/
+
 # Python / Bytecode
 __pycache__/
 *.py[cod]
@@ -32,5 +35,4 @@ dist/
 playwright-report/
 test-results/
 
-# tokless
-.codegraph/
+
