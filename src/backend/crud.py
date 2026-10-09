@@ -34,11 +34,12 @@ from backend.models import (
 # Campaign CRUD
 # ============================================================================
 
-def create_campaign(db: Session, **kwargs) -> Campaign:
+def create_campaign(db: Session, *, commit: bool = True, **kwargs) -> Campaign:
     """
     Create a new campaign with status='pending' and a generated public_id.
 
     Pass campaign fields as keyword arguments (title, description, purpose, etc.).
+    Use commit=False to include the creation in a caller-managed transaction.
     """
     campaign = Campaign(
         public_id=str(uuid.uuid4()),
@@ -47,8 +48,11 @@ def create_campaign(db: Session, **kwargs) -> Campaign:
     if "status" not in kwargs:
         campaign.status = "pending"
     db.add(campaign)
-    db.commit()
-    db.refresh(campaign)
+    if commit:
+        db.commit()
+        db.refresh(campaign)
+    else:
+        db.flush()
     return campaign
 
 
@@ -191,8 +195,10 @@ def create_document(
     original_filename: str,
     file_type: str,
     file_size_bytes: int,
+    *,
+    commit: bool = True,
 ) -> Document:
-    """Create a document metadata record for an uploaded file."""
+    """Create document metadata; commit=False leaves the transaction to the caller."""
     document = Document(
         public_id=str(uuid.uuid4()),
         campaign_id=campaign_id,
@@ -203,8 +209,11 @@ def create_document(
         processing_status="pending",
     )
     db.add(document)
-    db.commit()
-    db.refresh(document)
+    if commit:
+        db.commit()
+        db.refresh(document)
+    else:
+        db.flush()
     return document
 
 

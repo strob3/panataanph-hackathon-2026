@@ -89,4 +89,4 @@ def init_db() -> None:
     from backend import models  # noqa: F401
 
     Base.metadata.create_all(bind=engine)
-    print(f"✅ Database initialized at: {DATABASE_PATH}")
+    print(f"Database initialized at: {DATABASE_PATH}")
