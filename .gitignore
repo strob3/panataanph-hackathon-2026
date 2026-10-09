@@ -20,3 +20,13 @@ storage/*
 .vscode/
 .idea/
 .DS_Store
+
+# Frontend and local development
+node_modules/
+dist/
+.pytest_cache/
+.env
+.env.local
+.e2e/
+playwright-report/
+test-results/
