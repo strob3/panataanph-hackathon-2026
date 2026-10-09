@@ -35,6 +35,13 @@ test("submission persists to the backend and stays out of the directory", async 
   await page.goto("/");
   await expect(page.getByRole("heading", { name: "Verify before you give." })).toBeVisible();
   await page.getByRole("button", { name: "Open Submission Form" }).click();
+  await expect(page.getByRole("heading", { name: "Log in to continue" })).toBeVisible();
+  await page.getByRole("button", { name: "Create Account", exact: true }).click();
+  await page.getByLabel("Full name", { exact: true }).fill("Browser Test Organizer");
+  await page.getByLabel("Email", { exact: true }).fill(`organizer-${Date.now()}@example.test`);
+  await page.getByLabel("Password", { exact: true }).fill("browser-test-password-123");
+  await page.getByRole("button", { name: "Create account", exact: true }).click();
+  await expect(page.getByRole("heading", { level: 1, name: "Submit a Fundraiser" })).toBeVisible();
   await page.getByLabel("Organizer name").fill("Browser Test Organizer");
   await page.getByLabel("Campaign title").fill("Browser Test Relief");
   await page.getByLabel("Location", { exact: false }).fill("Marikina");
@@ -63,5 +70,18 @@ test("submission persists to the backend and stays out of the directory", async 
   await page.getByRole("button", { name: "Browse Campaigns", exact: true }).click();
   await page.getByRole("textbox", { name: "Search campaigns" }).fill("Browser Test Relief");
   await expect(page.getByText("No verified campaigns match these filters.")).toBeVisible();
+  await page.goto("/my-campaigns");
+  await expect(page.getByRole("heading", { name: "Browser Test Relief" })).toBeVisible();
+  if (page.viewportSize()!.width < 1280) {
+    await page.getByRole("button", { name: "Open menu" }).click();
+    await page
+      .getByRole("navigation", { name: "Mobile navigation" })
+      .getByRole("button", { name: "Log Out" })
+      .click();
+  } else {
+    await page.getByRole("button", { name: "Log Out" }).click();
+  }
+  await page.goto("/my-campaigns");
+  await expect(page.getByRole("heading", { name: "Log in to continue" })).toBeVisible();
   expect(errors).toEqual([]);
 });

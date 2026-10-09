@@ -21,6 +21,11 @@ import {
 } from "./components/IntegratedPages";
 
 import type { Submission } from "./lib/api";
+import { LoginPage } from "./components/AuthPages";
+import { AdminPage } from "./components/AdminPage";
+import { ProfilePage } from "./components/ProfilePage";
+import { AboutPage } from "./components/AboutPage";
+import { getCurrentUser, logout, type User } from "./lib/accountApi";
 
 type Route = string;
 
@@ -30,7 +35,18 @@ const routeFromPath = (): Route => {
   const path = window.location.pathname;
 
   return path.startsWith("/campaigns/") ||
-    ["/", "/verify", "/verify/processing", "/verify/report", "/campaigns"].includes(path)
+    [
+      "/",
+      "/verify",
+      "/verify/processing",
+      "/verify/report",
+      "/campaigns",
+      "/login",
+      "/register",
+      "/my-campaigns",
+      "/admin",
+      "/about",
+    ].includes(path)
     ? (path as Route)
     : "/";
 };
@@ -105,21 +121,42 @@ function IconButton({
   children,
 
   onClick,
+  expanded,
+  controls,
 }: {
   label: string;
 
   children: ReactNode;
 
   onClick?: () => void;
+  expanded?: boolean;
+  controls?: string;
 }) {
   return (
-    <button className="icon-button" aria-label={label} title={label} onClick={onClick}>
+    <button
+      className="icon-button"
+      aria-label={label}
+      title={label}
+      onClick={onClick}
+      aria-expanded={expanded}
+      aria-controls={controls}
+    >
       {children}
     </button>
   );
 }
 
-function Navbar({ route, go }: { route: Route; go: (route: Route) => void }) {
+function Navbar({
+  route,
+  go,
+  user,
+  onLogout,
+}: {
+  route: Route;
+  go: (route: Route) => void;
+  user: User | null;
+  onLogout: () => void;
+}) {
   const [open, setOpen] = useState(false);
   const navigate = (path: Route) => {
     setOpen(false);
@@ -129,10 +166,12 @@ function Navbar({ route, go }: { route: Route; go: (route: Route) => void }) {
   const items: [string, Route][] = [
     ["Home", "/"],
 
-    ["Submit a Fundraiser", "/verify"],
-
     ["Campaigns", "/campaigns"],
+    ["About", "/about"],
   ];
+  if (!user || (user.role !== "admin" && user.role !== "lgu")) items.splice(1, 0, ["Submit a Fundraiser", "/verify"]);
+  if (user && user.role !== "admin" && user.role !== "lgu") items.push(["My Campaigns", "/my-campaigns"]);
+  if (user?.role === "admin" || user?.role === "lgu") items.push(["Admin", "/admin"]);
 
   return (
     <header className="sticky top-0 z-40 border-b border-line/80 bg-white/90 backdrop-blur-xl">
@@ -140,7 +179,7 @@ function Navbar({ route, go }: { route: Route; go: (route: Route) => void }) {
         <button onClick={() => go("/")} aria-label="PanataanPH home">
           <Brand />
         </button>
-        <nav className="hidden items-center gap-1 lg:flex" aria-label="Primary navigation">
+        <nav className="hidden items-center gap-1 xl:flex" aria-label="Primary navigation">
           {items.map(([label, path]) => (
             <button
               key={path}
@@ -153,23 +192,29 @@ function Navbar({ route, go }: { route: Route; go: (route: Route) => void }) {
           <button onClick={() => go("/#how")} className="nav-link">
             How It Works
           </button>
-          <button onClick={() => go("/#about")} className="nav-link">
-            About
-          </button>
         </nav>
-        <div className="hidden lg:block">
-          <Button variant="outline" onClick={() => go("/verify")}>
-            Submit a Fundraiser <ArrowRight size={16} />
+        <div className="hidden xl:block">
+          <Button variant="outline" onClick={user ? onLogout : () => go("/login")}>
+            {user ? "Log Out" : "Log In"}
           </Button>
         </div>
-        <div className="lg:hidden">
-          <IconButton label="Open menu" onClick={() => setOpen(!open)}>
+        <div className="xl:hidden">
+          <IconButton
+            label={open ? "Close menu" : "Open menu"}
+            expanded={open}
+            controls="mobile-navigation"
+            onClick={() => setOpen(!open)}
+          >
             {open ? <X size={22} /> : <Menu size={22} />}
           </IconButton>
         </div>
       </div>
       {open && (
-        <nav className="border-t border-line bg-white px-5 py-4 lg:hidden">
+        <nav
+          id="mobile-navigation"
+          className="max-h-[calc(100dvh-4.5rem)] overflow-y-auto border-t border-line bg-white px-5 py-4 xl:hidden"
+          aria-label="Mobile navigation"
+        >
           <div className="mx-auto flex max-w-lg flex-col gap-1">
             {items.map(([label, path]) => (
               <button
@@ -187,11 +232,18 @@ function Navbar({ route, go }: { route: Route; go: (route: Route) => void }) {
             <button className="mobile-nav-link" onClick={() => navigate("/#how")}>
               How It Works
             </button>
-            <button className="mobile-nav-link" onClick={() => navigate("/#about")}>
-              About
-            </button>
-            <Button className="mt-2 w-full" onClick={() => navigate("/verify")}>
-              Submit a Fundraiser
+            <Button
+              className="mt-2 w-full"
+              onClick={
+                user
+                  ? () => {
+                      setOpen(false);
+                      onLogout();
+                    }
+                  : () => navigate("/login")
+              }
+            >
+              {user ? "Log Out" : "Log In"}
             </Button>
           </div>
         </nav>
@@ -218,7 +270,7 @@ function Footer({ go }: { go: (route: Route) => void }) {
           <button className="footer-link" onClick={() => go("/#how")}>
             How It Works
           </button>
-          <button className="footer-link" onClick={() => go("/#about")}>
+          <button className="footer-link" onClick={() => go("/about")}>
             About
           </button>
           <button className="footer-link" onClick={() => go("/verify")}>
@@ -472,8 +524,7 @@ function HomePage({ go }: { go: (route: Route) => void }) {
             </p>
             <p className="mt-3 text-sm leading-7 text-muted">
               Campaign descriptions, organizer names, and donation details become public after
-              approval. Automatic extraction and the administrator review interface are still being
-              developed.
+              approval. Admins and LGU reviewers assess evidence before publication.
             </p>
           </div>
         </section>
@@ -487,12 +538,15 @@ export default function App() {
   const [route, setRoute] = useState<Route>(routeFromPath);
 
   const [submission, setSubmission] = useState<Submission | null>(null);
+  const [user, setUser] = useState<User | null>(null);
+  const [checkingSession, setCheckingSession] = useState(true);
+  const [sessionError, setSessionError] = useState("");
 
   const go = (next: Route | string) => {
     if (next.includes("#")) {
       const [path, hash] = next.split("#");
 
-      if (window.location.pathname !== path) window.history.pushState({}, "", next);
+      window.history.pushState({}, "", next);
 
       setRoute(path as Route);
 
@@ -506,7 +560,7 @@ export default function App() {
 
     window.history.pushState({}, "", next);
 
-    setRoute(next as Route);
+    setRoute(new URL(next, window.location.origin).pathname);
 
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
@@ -519,11 +573,141 @@ export default function App() {
     return () => window.removeEventListener("popstate", onPop);
   }, []);
 
+  useEffect(() => {
+    let active = true;
+    getCurrentUser()
+      .then((result) => {
+        if (active) setUser(result);
+      })
+      .catch(() => {
+        if (active) setUser(null);
+      })
+      .finally(() => {
+        if (active) setCheckingSession(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [route]);
+
+  const onAuthenticated = (result: User) => {
+    setUser(result);
+    const next = new URLSearchParams(window.location.search).get("next");
+    go(
+      next === "/verify" || next === "/my-campaigns"
+        ? next
+        : result.role === "organizer"
+          ? "/my-campaigns"
+          : "/admin",
+    );
+  };
+  const onLogout = async () => {
+    try {
+      await logout();
+      setUser(null);
+      setSubmission(null);
+      setSessionError("");
+      go("/");
+    } catch (error) {
+      setSessionError(error instanceof Error ? error.message : "Log out failed. Please try again.");
+    }
+  };
+  const loginGate = (
+    <main className="container py-12">
+      <section className="report-card mx-auto max-w-2xl">
+        <h1 className="text-3xl font-extrabold">Log in to continue</h1>
+        <p className="mt-4 text-muted">
+          Organizer accounts can submit campaigns and report fundraising updates.
+        </p>
+        <button
+          className="button button-primary mt-6"
+          onClick={() => go(`/login?next=${route === "/verify" ? "/verify" : "/my-campaigns"}`)}
+        >
+          Log In
+        </button>
+        <button
+          className="button button-secondary mt-6 ml-3"
+          onClick={() => go(`/register?next=${route === "/verify" ? "/verify" : "/my-campaigns"}`)}
+        >
+          Create Account
+        </button>
+      </section>
+    </main>
+  );
+
   return (
     <div className="min-h-screen bg-canvas text-ink">
-      <Navbar route={route} go={go} />
+      <Navbar route={route} go={go} user={user} onLogout={onLogout} />
+      {sessionError && (
+        <p role="alert" className="container py-3 text-sm text-brand">
+          {sessionError}
+        </p>
+      )}
       {route === "/" && <HomePage go={go} />}
-      {route === "/verify" && <SubmissionPage go={go} onSubmitted={setSubmission} />}
+      {route === "/verify" &&
+        (checkingSession ? (
+          <p role="status" className="container py-12">
+            Checking login…
+          </p>
+        ) : user ? (
+          user.role === "admin" || user.role === "lgu" ? (
+            <main className="container py-12">
+              <section className="report-card">
+                <h1 className="text-3xl font-extrabold">Reviewer submission disabled</h1>
+                <p className="mt-4 text-muted">
+                  Admin and LGU accounts review campaigns. Use a separate organizer account to
+                  submit a fundraiser.
+                </p>
+                <button className="button button-primary mt-6" onClick={() => go("/admin")}>
+                  Open review dashboard
+                </button>
+              </section>
+            </main>
+          ) : (
+            <SubmissionPage go={go} onSubmitted={setSubmission} />
+          )
+        ) : (
+          loginGate
+        ))}
+      {(route === "/login" || route === "/register") && (
+        <LoginPage
+          key={route}
+          go={go}
+          onAuthenticated={onAuthenticated}
+          register={route === "/register"}
+        />
+      )}
+      {route === "/my-campaigns" &&
+        (checkingSession ? (
+          <p role="status" className="container py-12">
+            Checking login…
+          </p>
+        ) : user ? (
+          <ProfilePage user={user} go={go} />
+        ) : (
+          loginGate
+        ))}
+      {route === "/admin" &&
+        (checkingSession ? (
+          <p role="status" className="container py-12">
+            Checking login…
+          </p>
+        ) : user && (user.role === "admin" || user.role === "lgu") ? (
+          <AdminPage user={user} go={go} />
+        ) : (
+          <main className="container py-12">
+            <section className="report-card">
+              <h1 className="text-3xl font-extrabold">Admin and LGU access</h1>
+              <p className="mt-4 text-muted">
+                Log in with an authorized reviewer account to review campaigns.
+              </p>
+              <button className="button button-primary mt-6" onClick={() => go("/login")}>
+                Reviewer Login
+              </button>
+            </section>
+          </main>
+        ))}
+      {route === "/about" && <AboutPage go={go} />}
       {route === "/verify/processing" && <SubmissionReport submission={submission} go={go} />}
       {route === "/verify/report" && <SubmissionReport submission={submission} go={go} />}
       {route === "/campaigns" && <CampaignDirectory go={go} />}

@@ -35,12 +35,49 @@ On macOS/Linux, use `.venv/bin/python` instead of `.venv\Scripts\python.exe`.
 - `/`: responsive landing page; its evidence illustration is labeled as an example.
 - `/campaigns`: verified campaigns from SQLite, with search, location, cause, urgency, and pagination.
 - `/campaigns/:public_id`: public campaign details, recorded evidence score and criterion values, and a downloadable public JSON report.
-- `/verify`: organizer submission form with up to four PDF/JPG/PNG documents, each at most 10 MB. The backend checks extensions, MIME types, and file signatures, generates storage filenames, and saves files privately in `storage/`.
-- `/verify/report`: confirmation of the current session's saved submission and reference number. Save the reference before refreshing; private submission lookup is not exposed publicly.
+- `/register` and `/login`: local organizer accounts and revocable HttpOnly cookie sessions. Public registration never grants admin/LGU privileges.
+- `/verify`: login required; organizer submission with up to four private PDF/JPG/PNG documents and a separate optional donation QR image (JPG/PNG), each at most 10 MB. QR label and donation details become public only after approval.
+- `/verify/report`: submission confirmation. `/my-campaigns` shows the signed-in organizer's submissions, review feedback, and fund-report history.
+- `/admin`: protected admin/LGU queue, organizer account verification, private documents and extraction results, evidence checklist, campaign decisions and review history, and fund-report review.
+- `/about`: consistent responsive explanation of privacy, evidence completeness, and human review.
 
-Submissions remain `pending` and are excluded from the public directory. Uploaded documents, organizer contact details, registration numbers, and reviewer notes are never returned by public campaign endpoints. Donation payment details are public after approval, as explained in the form.
+Reviewer accounts follow separation of duties: admin/LGU accounts can review and approve campaigns but cannot submit fundraising campaigns. Organizers submit campaigns through separate organizer accounts.
 
-Automatic OCR, Ollama extraction, deterministic score computation, and the authenticated admin review UI are still planned. The imported prototype's simulated analysis and fabricated reports have been replaced with real submission confirmation; this integration never approves campaigns or generates scores automatically. No document data is sent to external AI services. The frontend has no external font dependency.
+Submissions remain `pending` until a reviewer starts `under_review`, then selects `needs_information`, `verified`, or `rejected` with a reason. **80/100 makes a campaign eligible for human approval; scores never publish campaigns automatically.** Approval also requires a verified organizer account and explicit confirmation that warnings and major inconsistencies have been reviewed and resolved. An admin can approve a lower score only through an explicit threshold exception with a separate recorded reason. Public details identify this exception. Unapproved submissions are excluded from lists, direct public details, and donation QR endpoints. Revoking organizer verification hides that organizer's campaigns immediately. Previously verified fictional demo rows without an owner remain readable only if they meet the score threshold; new submissions always have an authenticated owner.
+
+When reviewers request additional evidence, organizers upload private supporting files under `/my-campaigns`. The campaign returns to `under_review`, its previous score is cleared, and the original feedback and response remain in review history. Uploads never approve or publish a campaign.
+
+Score rules use the documented 30/20/20/20/10 weights: applicable authorizations confirmed against evidence (30), verified organizer identity confirmed against evidence (20), matching donation details confirmed by reviewer (20), campaign completeness (4 points each for title/description, purpose, location, beneficiaries, and positive target; 20 total), and reviewed campaign history (10). Ordinary approval requires the authorizations, identity, and payment consistency checklist; an audited threshold exception can account for alternative evidence but cannot bypass account verification or unresolved warnings. The score measures evidence completeness; it does not predict fraud or guarantee authenticity.
+
+Uploaded documents, organizer contact details, registration numbers, extraction results, and reviewer notes remain private. Only a designated donation QR image is published after approval. No document data is sent to external AI services. Automatic OCR/Ollama extraction remains planned; manual verification works without it. The frontend has no external font dependency.
+
+Organizers report received/spent funds under `/my-campaigns`. Every entry needs admin approval before affecting public totals. PHP values are stored as integer centavos. Public pages show received, spent, balance, target progress, and approved dated entries. These are reviewed organizer reports, not automatic payment reconciliation; zero means no approved reports. Donations happen through the organizer's payment provider.
+
+## Set up an admin or LGU reviewer
+
+No default privileged credentials exist. Provision authorized reviewers locally, choose a password when prompted, then log in at `/login` and open `/admin`:
+
+```powershell
+cd src
+..\.venv\Scripts\python.exe -m backend.manage_accounts create --email reviewer@example.com --name "Authorized Reviewer" --role lgu
+cd ..
+```
+
+Use `--role admin` for a project administrator. The command never promotes existing public registrations. Passwords are hashed with scrypt; session tokens are hashed in SQLite. Account verification and campaign decisions record reviewer identity and reason. State-changing cookie requests enforce the same origin; Vite preserves the frontend Host header when proxying.
+
+If the email already exists because it was registered incorrectly, repair it explicitly:
+
+```powershell
+cd src
+..\.venv\Scripts\python.exe -m backend.manage_accounts reset --email reviewer@example.com --name "Authorized Reviewer" --role lgu
+cd ..
+```
+
+This resets the password, marks the account verified, assigns the selected reviewer role, and revokes its existing sessions.
+
+Review order: inspect submission documents and donation destination, verify organizer account, start campaign review, confirm evidence checklist, and save the final decision. A verified campaign's fund reports then appear in the same admin detail for separate approval.
+
+Startup adds account/session/QR/fund/audit tables and a nullable campaign ownership column to existing databases without deleting campaigns.
 
 The included database and `backend.seed` contain fictional demonstration data. Existing scores are displayed as stored; do not treat demo campaigns as real donation opportunities. To start with an empty database, set `PANATAANPH_DB_PATH` to a new file before starting the backend. Do not delete the included database to reset your environment.
 
@@ -52,7 +89,7 @@ The included database and `backend.seed` contain fictional demonstration data. E
 | `PANATAANPH_STORAGE_PATH` | `storage/` | Private document directory; inherited by the backend process |
 | `PANATAANPH_API_TARGET` | `http://127.0.0.1:8000` | Vite development API proxy target |
 
-For a production frontend build, serve `frontend/dist/` with SPA fallback and proxy `/api` to FastAPI on the same origin. Keep `storage/` outside public static roots. The current API is intended for local development; deploy the authenticated admin workflow separately when implemented.
+For a production frontend build, serve `frontend/dist/` with SPA fallback and proxy `/api` to FastAPI on the same origin, preserving the frontend Host and scheme. Keep `storage/` outside public static roots. Local HTTP sessions use SameSite/HttpOnly; HTTPS sessions also use Secure cookies.
 
 ## Verification
 
@@ -65,4 +102,4 @@ npx.cmd playwright install chromium
 npm.cmd test
 ```
 
-Backend tests use an isolated in-memory database and temporary upload storage; they do not modify the included database. The frontend build includes strict TypeScript checking. Browser tests cover the directory, public report download, and private submission on desktop and mobile, using a copied database and private storage under ignored `.e2e/` folders. They start test servers automatically on ports 8100 and 5174; both ports must be free. Browser installation requires network access once.
+Backend tests use an isolated in-memory database and temporary upload storage; they do not modify the included database. The frontend build includes strict TypeScript checking. Browser tests cover signup/login/logout, submissions, reviewer approval, donation QR, fund transparency, and layouts at 320/375/768/1280px on desktop/mobile. They use a copied database and private storage under ignored `.e2e/` folders, and provision a fictional reviewer only in that disposable database. Test servers start automatically on ports 8100 and 5174; both ports must be free. Browser installation requires network access once.

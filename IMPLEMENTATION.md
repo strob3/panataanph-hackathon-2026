@@ -8,7 +8,7 @@
 
 | Component | Technology | Responsibility |
 |---|---|---|
-| Frontend | Next.js, TypeScript, Tailwind CSS | Public directory, submission forms, admin dashboard |
+| Frontend | React/Vite, TypeScript, Tailwind CSS | Integrated responsive directory, submission forms, admin dashboard |
 | Backend | Python, FastAPI | API endpoints and processing orchestration |
 | OCR | PaddleOCR | Extract text from scanned documents and images |
 | PDF parsing | PDF text extraction library | Extract selectable text from text-based PDFs |
@@ -32,6 +32,14 @@ All core services run on the same host machine during the hackathon demonstratio
 | 7 | Integration and offline testing | 3 hours |
 | 8 | Contingency buffer | 2 hours |
 | **Total** | | **24 hours** |
+
+## Current implementation
+
+Organizer signup/login, authenticated submissions, private evidence, optional donation QR images, admin/LGU account and campaign review, deterministic scores, review history, and approved fund-report transparency are implemented. Score ≥80 qualifies a campaign for human approval; publication never happens automatically. Approval requires a verified organizer account and confirmed resolution of warnings and major inconsistencies. Below-threshold approval requires an explicit exception and separate recorded reason. Organizers can respond to evidence requests with private uploads; this resets scoring and returns the campaign to human review. Layout checks cover 320/375/768/1280px and a consistent About page.
+
+Scores follow the 30/20/20/20/10 criteria below, using explicit reviewer evidence confirmations and deterministic campaign completeness. OCR/Ollama remains pending; existing extraction data can be inspected, and manual review works offline without an inference service. Fund totals are reviewed organizer reports rather than automatically reconciled payment transactions.
+
+See README.md for account provisioning, endpoints, and runnable checks. WORKFLOW.md remains the branch/PR/review process.
 
 ## Phase 1: Project Setup and Architecture
 
@@ -91,13 +99,15 @@ The actual upload directory and database file must be excluded from version cont
 
 ### Tasks
 
-- [ ] Build the homepage and campaign listing.
-- [ ] Create reusable campaign cards.
-- [ ] Create individual campaign detail pages.
-- [ ] Display campaign purpose, organizer, location, beneficiaries, and fundraising target.
-- [ ] Display verification status and evidence completeness score.
-- [ ] Implement search and filters by location, cause, urgency, and status.
-- [ ] Add fictional sample campaigns for development and demonstration.
+- [x] Build the homepage and campaign listing.
+- [x] Create reusable campaign cards.
+- [x] Create individual campaign detail pages.
+- [x] Display campaign purpose, organizer, location, beneficiaries, and fundraising target.
+- [x] Display verification status and evidence completeness score.
+- [x] Implement public search/location/cause/urgency filters and admin status filters.
+- [x] Add fictional sample campaigns for development and demonstration.
+- [x] Add responsive layouts and a consistent About page.
+- [x] Display approved donation QR images and reviewed fund transparency.
 
 ### Requirements
 
@@ -115,13 +125,14 @@ The actual upload directory and database file must be excluded from version cont
 ### Tasks
 
 - [ ] Build a multi-step campaign submission form.
-- [ ] Collect organizer and organization information.
-- [ ] Collect campaign purpose, beneficiaries, location, target amount, and payment details.
-- [ ] Accept supporting PDFs and images.
-- [ ] Validate file types, file sizes, and required fields.
-- [ ] Store uploaded files in a private directory.
-- [ ] Save document metadata and campaign information in SQLite.
-- [ ] Set new campaigns to `pending`.
+- [x] Collect organizer and organization information.
+- [x] Collect campaign purpose, beneficiaries, location, target amount, and payment details.
+- [x] Accept supporting PDFs and images.
+- [x] Validate file types, file sizes, and required fields.
+- [x] Store uploaded files in a private directory.
+- [x] Save document metadata and campaign information in SQLite.
+- [x] Set new campaigns to `pending`.
+- [x] Require organizer login and accept private responses to evidence requests.
 
 ### Requirements
 
@@ -230,10 +241,10 @@ It should initiate extraction for a previously uploaded document and return the 
 - [ ] Compare extracted information against campaign submission details.
 - [ ] Flag missing, unreadable, or ambiguous information.
 - [ ] Highlight discrepancies in organization names, permit numbers, and dates.
-- [ ] Implement a deterministic evidence completeness score from 0 to 100.
-- [ ] Show a score breakdown and explain missing points.
+- [x] Implement a deterministic evidence completeness score from 0 to 100.
+- [x] Show a score breakdown and explain missing points.
 - [ ] Distinguish missing information from a confirmed mismatch.
-- [ ] Store findings so admins can review them.
+- [x] Store deterministic score findings so admins can review them.
 
 ### Proposed Score Criteria
 
@@ -265,16 +276,19 @@ These weights are provisional and should be finalized during implementation.
 
 ### Tasks
 
-- [ ] Build an admin dashboard listing pending and flagged submissions.
-- [ ] Display campaign information and uploaded documents.
-- [ ] Display extracted fields alongside the original document.
-- [ ] Display the score breakdown and validation findings.
-- [ ] Allow admins to approve campaigns.
-- [ ] Allow admins to reject campaigns with a recorded reason.
-- [ ] Allow admins to request additional information.
-- [ ] Record review history and decisions.
+- [x] Build an admin dashboard listing pending and flagged submissions.
+- [x] Display campaign information and uploaded documents.
+- [x] Display stored extracted fields alongside links to original documents (automatic extraction remains pending).
+- [x] Display the score breakdown and validation findings.
+- [x] Allow admins to approve campaigns.
+- [x] Allow admins to reject campaigns with a recorded reason.
+- [x] Allow admins to request additional information.
+- [x] Record review history and decisions.
+- [x] Verify organizer accounts through authorized admin/LGU accounts.
+- [x] Enforce 80/100 eligibility, human approval, resolved warnings, and audited threshold exceptions.
+- [x] Review received/spent fund reports before publishing totals.
 - [ ] Implement campaign reporting and review.
-- [ ] Restrict access to admin routes and private documents.
+- [x] Restrict access to admin routes and private documents.
 
 ### Campaign Statuses
 
@@ -296,28 +310,28 @@ Reports should trigger review, not automatically label a campaign fraudulent.
 
 ### End-to-End Test
 
-- [ ] Submit a fictional relief campaign.
-- [ ] Upload a fictional supporting permit.
+- [x] Submit a fictional relief campaign.
+- [x] Upload a fictional supporting permit.
 - [ ] Extract text through the PDF parser or PaddleOCR.
 - [ ] Send the text to Qwen3 through Ollama.
 - [ ] Validate and store the returned JSON.
 - [ ] Display the extracted information in the admin dashboard.
 - [ ] Compare extracted fields against the campaign submission.
-- [ ] Calculate and display the evidence completeness score.
-- [ ] Approve the campaign or request additional information.
-- [ ] Confirm that the public campaign status updates correctly.
+- [x] Calculate and display the evidence completeness score.
+- [x] Approve the campaign or request additional information.
+- [x] Confirm that the public campaign status updates correctly.
 
 ### Error and Security Tests
 
-- [ ] Unsupported file type.
-- [ ] Oversized upload.
+- [x] Unsupported file type.
+- [x] Oversized upload.
 - [ ] Empty or unreadable document.
-- [ ] Missing fields.
+- [x] Missing fields.
 - [ ] Invalid model output.
 - [ ] Model timeout or unavailable Ollama service.
 - [ ] Mismatched campaign and document information.
-- [ ] Unauthorized access to admin routes.
-- [ ] Unauthorized access to private documents.
+- [x] Unauthorized access to admin routes.
+- [x] Unauthorized access to private documents.
 
 ### Offline Demonstration
 

@@ -12,7 +12,7 @@ Usage in a route:
         return campaign  # Pydantic auto-converts the ORM object
 """
 
-from datetime import datetime
+from datetime import date, datetime
 from enum import Enum
 from typing import Literal
 
@@ -177,6 +177,29 @@ class PublicFinding(BaseModel):
     points_possible: int
 
 
+class PublicQRCode(BaseModel):
+    public_id: str
+    label: str
+    image_url: str
+
+
+class PublicFundEntry(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    public_id: str
+    kind: Literal["received", "spent"]
+    amount_centavos: int
+    description: str
+    occurred_on: date
+    status: Literal["approved"]
+
+
+class FundsTransparency(BaseModel):
+    received_centavos: int = 0
+    spent_centavos: int = 0
+    balance_centavos: int = 0
+    entries: list[PublicFundEntry] = Field(default_factory=list)
+
+
 class PublicCampaign(CampaignListResponse):
     """Allowlisted public metadata; never documents, contacts, or admin notes."""
 
@@ -187,6 +210,10 @@ class PublicCampaign(CampaignListResponse):
     payment_details: str | None
     updated_at: datetime
     findings: list[PublicFinding]
+    minimum_score: int = 80
+    threshold_overridden: bool = False
+    qr_codes: list[PublicQRCode] = Field(default_factory=list)
+    transparency: FundsTransparency = Field(default_factory=FundsTransparency)
 
 
 class SubmissionResponse(BaseModel):

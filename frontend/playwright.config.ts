@@ -30,12 +30,13 @@ export default defineConfig({
   ],
   webServer: [
     {
-      command: `"${python}" -m uvicorn backend.main:app --app-dir src --host 127.0.0.1 --port 8100`,
+      command: `"${python}" tests/browser_fixture.py && "${python}" -m uvicorn backend.main:app --app-dir src --host 127.0.0.1 --port 8100`,
       cwd: root,
       url: "http://127.0.0.1:8100/api/health",
       env: {
         PANATAANPH_DB_PATH: database,
         PANATAANPH_STORAGE_PATH: path.join(run, "storage"),
+        PYTHONPATH: path.join(root, "src"),
       },
     },
     {

@@ -31,6 +31,7 @@
     color: var(--color-ink);
     font-family: var(--font-sans);
     -webkit-font-smoothing: antialiased;
+    overflow-wrap: anywhere;
   }
 
   h1,
@@ -46,12 +47,34 @@
     font: inherit;
   }
 
+  input,
+  select,
+  textarea,
+  fieldset {
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  input[type="checkbox"] {
+    width: 1rem;
+    height: 1rem;
+    flex-shrink: 0;
+    accent-color: var(--color-brand);
+  }
+
+  img {
+    max-width: 100%;
+  }
+
   button {
     cursor: pointer;
   }
 
   button:focus-visible,
-  input:focus-visible {
+  input:focus-visible,
+  select:focus-visible,
+  textarea:focus-visible,
+  a:focus-visible {
     outline: 3px solid rgba(215, 25, 32, 0.22);
     outline-offset: 2px;
   }
@@ -100,6 +123,7 @@
     align-items: center;
     justify-content: center;
     gap: 0.5rem;
+    max-width: 100%;
     border: 1px solid transparent;
     border-radius: 0.8rem;
     padding: 0.7rem 1.15rem;
@@ -208,6 +232,7 @@
   .badge {
     display: inline-flex;
     width: fit-content;
+    max-width: 100%;
     align-items: center;
     gap: 0.4rem;
     border-radius: 999px;
@@ -386,6 +411,7 @@
   }
 
   .report-card {
+    min-width: 0;
     border: 1px solid var(--color-line);
     border-radius: 1.5rem;
     background: white;
@@ -440,6 +466,7 @@
   }
 
   .campaign-card {
+    min-width: 0;
     border: 1px solid var(--color-line);
     border-radius: 1.5rem;
     background: white;
@@ -534,4 +561,17 @@
 button:disabled {
   cursor: not-allowed;
   opacity: 0.6;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
 }

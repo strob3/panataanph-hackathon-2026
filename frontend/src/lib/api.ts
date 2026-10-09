@@ -24,6 +24,24 @@ export interface CampaignDetail extends Campaign {
     points_awarded: number;
     points_possible: number;
   }[];
+  minimum_score: number;
+  threshold_overridden: boolean;
+  qr_codes: { public_id: string; label: string; image_url: string }[];
+  transparency: {
+    received_centavos: number;
+    spent_centavos: number;
+    balance_centavos: number;
+    entries: FundEntry[];
+  };
+}
+
+export interface FundEntry {
+  public_id: string;
+  kind: "received" | "spent";
+  amount_centavos: number;
+  description: string;
+  occurred_on: string;
+  status: "approved";
 }
 
 export interface CampaignPage {
@@ -39,7 +57,7 @@ export interface Submission {
   documents_received: number;
 }
 
-async function request<T>(path: string, options?: RequestInit): Promise<T> {
+export async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const response = await fetch(`/api${path}`, options);
   if (!response.ok) {
     const body = await response.json().catch(() => null);
@@ -52,6 +70,7 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
           : `Request failed (${response.status}). Please try again.`,
     );
   }
+  if (response.status === 204) return undefined as T;
   return response.json() as Promise<T>;
 }
 
@@ -65,7 +84,7 @@ export function getCampaign(id: string, signal?: AbortSignal) {
   });
 }
 
-export function submitCampaign(fields: Record<string, string>, files: File[]) {
+export function submitCampaign(fields: Record<string, string>, files: File[], donationQR?: File) {
   const form = new FormData();
   const values = Object.fromEntries(
     Object.entries(fields).map(([key, value]) => [key, value || null]),
@@ -75,5 +94,9 @@ export function submitCampaign(fields: Record<string, string>, files: File[]) {
     JSON.stringify({ ...values, target_amount: Number(fields.target_amount) }),
   );
   files.forEach((file) => form.append("documents", file));
+  if (donationQR) {
+    form.append("donation_qr", donationQR);
+    form.append("qr_label", fields.qr_label || "");
+  }
   return request<Submission>("/submissions", { method: "POST", body: form });
 }
