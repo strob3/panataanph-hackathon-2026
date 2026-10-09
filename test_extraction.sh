@@ -1,18 +1,36 @@
 #!/usr/bin/env bash
 set -e
 
-# Use isolated temporary paths for testing so tracked db is untouched
-export PANATAANPH_DB_PATH="/tmp/panataanph_test.db"
-export PANATAANPH_STORAGE_PATH="/tmp/panataanph_test_storage"
-rm -f "$PANATAANPH_DB_PATH"
-rm -rf "$PANATAANPH_STORAGE_PATH"
-
-# 1. Bootstrap virtualenv if missing on fresh clone
-if [ ! -f ".venv/bin/python" ]; then
+# Detect Python virtual environment path (Linux/macOS vs Windows Git Bash)
+if [ -f ".venv/Scripts/python.exe" ]; then
+    VENV_PY=".venv/Scripts/python.exe"
+    VENV_PYTEST=".venv/Scripts/pytest.exe"
+elif [ -f ".venv/bin/python" ]; then
+    VENV_PY=".venv/bin/python"
+    VENV_PYTEST=".venv/bin/pytest"
+else
     echo "[!] Virtual environment not found. Setting up .venv..."
-    python3 -m venv .venv
+    if command -v python3 >/dev/null 2>&1; then
+        python3 -m venv .venv
+    elif command -v python >/dev/null 2>&1; then
+        python -m venv .venv
+    elif command -v py >/dev/null 2>&1; then
+        py -m venv .venv
+    else
+        echo "Error: Python 3.10+ not found in PATH."
+        exit 1
+    fi
+
+    if [ -f ".venv/Scripts/python.exe" ]; then
+        VENV_PY=".venv/Scripts/python.exe"
+        VENV_PYTEST=".venv/Scripts/pytest.exe"
+    else
+        VENV_PY=".venv/bin/python"
+        VENV_PYTEST=".venv/bin/pytest"
+    fi
+
     echo "[!] Installing dependencies..."
-    ./.venv/bin/pip install -r requirements-dev.txt
+    "$VENV_PY" -m pip install -r requirements-dev.txt
     echo "[✓] Environment ready."
 fi
 
@@ -37,8 +55,8 @@ fi
 
 echo ""
 echo "=== Running Unit & Pipeline Tests ==="
-./.venv/bin/pytest tests/test_extraction.py -v
+"$VENV_PYTEST" tests/test_extraction.py -v
 
 echo ""
 echo "=== Running End-to-End Extraction Workflow ==="
-./.venv/bin/python scripts/test_extraction_e2e.py
+"$VENV_PY" scripts/test_extraction_e2e.py
