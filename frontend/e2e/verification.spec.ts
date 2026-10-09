@@ -10,6 +10,7 @@ test("reviewers verify accounts and campaigns before QR and reviewed funds becom
   await page.getByLabel("Full name", { exact: true }).fill("Review Flow Organizer");
   await page.getByLabel("Email", { exact: true }).fill(email);
   await page.getByLabel("Password", { exact: true }).fill("browser-organizer-password-123");
+  await page.getByRole("checkbox", { name: /Terms of Service/i }).check();
   await page.getByRole("button", { name: "Create account", exact: true }).click();
   await expect(page.getByRole("heading", { level: 1, name: "Submit a Fundraiser" })).toBeVisible();
   await page.getByLabel("Organizer name", { exact: false }).fill("Review Flow Organizer");
@@ -80,28 +81,44 @@ test("reviewers verify accounts and campaigns before QR and reviewed funds becom
     await expect(
       admin.getByText("Review saved. Campaign is under review.", { exact: true }),
     ).toBeVisible();
-    await admin.getByLabel("Review reason", { exact: true }).fill("Provide a clearer authorization document");
+    await admin
+      .getByLabel("Review reason", { exact: true })
+      .fill("Provide a clearer authorization document");
     await admin.getByRole("button", { name: "Save campaign review", exact: true }).click();
-    await expect(admin.getByText("Review saved. Campaign is needs information.", { exact: true })).toBeVisible();
+    await expect(
+      admin.getByText("Review saved. Campaign is needs information.", { exact: true }),
+    ).toBeVisible();
     await page.goto("/my-campaigns");
     await page.getByRole("button", { name: "View Review Details", exact: true }).click();
-    await expect(page.getByText("Provide a clearer authorization document", { exact: true })).toBeVisible();
+    await expect(
+      page.getByText("Provide a clearer authorization document", { exact: true }),
+    ).toBeVisible();
     await page.getByLabel("Additional supporting documents", { exact: true }).setInputFiles({
       name: "clearer-authorization.pdf",
       mimeType: "application/pdf",
       buffer: Buffer.from("%PDF-1.7\nFictional additional evidence"),
     });
-    const additional = page.waitForResponse((res) => res.url().endsWith(`/my/campaigns/${id}/documents`) && res.request().method() === "POST");
+    const additional = page.waitForResponse(
+      (res) =>
+        res.url().endsWith(`/my/campaigns/${id}/documents`) && res.request().method() === "POST",
+    );
     await page.getByRole("button", { name: "Send Additional Evidence", exact: true }).click();
     expect((await additional).status()).toBe(201);
     expect((await page.context().request.get(`/api/campaigns/${id}`)).status()).toBe(404);
     await admin.getByRole("button", { name: "Refresh queue", exact: true }).click();
-    await expect(admin.getByRole("link", { name: "clearer-authorization.pdf", exact: false })).toBeVisible();
+    await expect(
+      admin.getByRole("link", { name: "clearer-authorization.pdf", exact: false }),
+    ).toBeVisible();
     await admin.getByRole("checkbox", { name: /Applicable permits/ }).check();
     await admin.getByRole("checkbox", { name: /Organizer identity/ }).check();
     await admin.getByRole("checkbox", { name: /donation details|Payment|payment/ }).check();
     await admin.getByLabel("Campaign decision", { exact: true }).selectOption("verified");
-    await admin.getByRole("checkbox", { name: "Warnings and major inconsistencies reviewed and resolved", exact: true }).check();
+    await admin
+      .getByRole("checkbox", {
+        name: "Warnings and major inconsistencies reviewed and resolved",
+        exact: true,
+      })
+      .check();
     await admin
       .getByLabel("Review reason", { exact: true })
       .fill("Fictional documents and donation destination checked");

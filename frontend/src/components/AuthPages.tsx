@@ -30,6 +30,10 @@ export function LoginPage({
       setError("Complete all required fields.");
       return;
     }
+    if (register && !created && !fields.get("terms")) {
+      setError("You must agree to the Terms of Service.");
+      return;
+    }
     setBusy(true);
     setError("");
     try {
@@ -62,7 +66,7 @@ export function LoginPage({
               : "Manage your fundraisers or access your assigned review dashboard."}
           </p>
         </div>
-        <form onSubmit={submit} className="report-card mt-8 space-y-5">
+        <form onSubmit={submit} noValidate className="report-card mt-8 space-y-5">
           {error && (
             <p role="alert" className="rounded-xl bg-red-50 p-3 text-sm text-brand">
               {error}
@@ -118,6 +122,21 @@ export function LoginPage({
               </span>
             )}
           </label>
+          {register && !created && (
+            <label className="flex items-start gap-3 text-sm leading-6">
+              <input name="terms" type="checkbox" disabled={busy} className="mt-1" />
+              <span>
+                I agree to the{" "}
+                <button
+                  type="button"
+                  className="font-semibold text-brand underline underline-offset-4"
+                  onClick={() => switchPage("/terms")}
+                >
+                  Terms of Service
+                </button>
+              </span>
+            </label>
+          )}
           <button className="button button-primary w-full" type="submit" disabled={busy}>
             {busy ? "Signing in…" : register && !created ? "Create account" : "Sign in"}
             <ArrowRight size={16} />

@@ -18,7 +18,13 @@ type Navigate = (path: string) => void;
 const message = (error: unknown) =>
   error instanceof Error ? error.message : "Unable to connect to the API. Please try again.";
 const date = (value: string) =>
-  new Date(/^\d{4}-\d{2}-\d{2}$/.test(value) ? `${value}T00:00:00` : value.endsWith("Z") ? value : `${value}Z`).toLocaleDateString("en-PH");
+  new Date(
+    /^\d{4}-\d{2}-\d{2}$/.test(value)
+      ? `${value}T00:00:00`
+      : value.endsWith("Z")
+        ? value
+        : `${value}Z`,
+  ).toLocaleDateString("en-PH");
 const money = (value: number) =>
   new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP" }).format(value);
 
@@ -119,7 +125,9 @@ export function SubmissionPage({
       return;
     }
     const fields = Object.fromEntries(
-      [...new FormData(event.currentTarget).entries()].filter(([, value]) => typeof value === "string"),
+      [...new FormData(event.currentTarget).entries()].filter(
+        ([, value]) => typeof value === "string",
+      ),
     ) as Record<string, string>;
     Object.keys(fields).forEach((key) => {
       fields[key] = fields[key].trim();
@@ -173,7 +181,11 @@ export function SubmissionPage({
             <div className="mt-6 grid gap-5 md:grid-cols-2">
               <Field name="organizer_name" label="Organizer name" required maxLength={255} />
               <Field name="organization_name" label="Organization name" maxLength={255} />
-              <Field name="organization_registration_number" label="Organizer / organization registration number" maxLength={100} />
+              <Field
+                name="organization_registration_number"
+                label="Organizer / organization registration number"
+                maxLength={100}
+              />
               <Field name="organizer_email" label="Email (private)" type="email" maxLength={255} />
               <Field name="organizer_phone" label="Phone (private)" type="tel" maxLength={50} />
               <Field name="title" label="Campaign title" required maxLength={500} />
@@ -242,7 +254,8 @@ export function SubmissionPage({
                     if (
                       !["image/jpeg", "image/png"].includes(file.type) ||
                       !/\.(jpe?g|png)$/i.test(file.name) ||
-                      !file.size || file.size > 10 * 1024 * 1024
+                      !file.size ||
+                      file.size > 10 * 1024 * 1024
                     ) {
                       setError("Choose a nonempty PNG or JPG donation QR image up to 10 MB.");
                       event.target.value = "";
@@ -341,8 +354,19 @@ export function SubmissionPage({
               external AI services.
             </p>
             <label className="mt-5 flex items-start gap-3 text-sm leading-6">
-              <input type="checkbox" required className="mt-1.5" />I agree to submit these documents
-              for private review and publish the campaign and donation details if approved.
+              <input type="checkbox" required className="mt-1.5" />
+              <span>
+                I agree to the{" "}
+                <button
+                  type="button"
+                  className="font-semibold text-brand underline underline-offset-4"
+                  onClick={() => go("/terms")}
+                >
+                  Terms of Service
+                </button>
+                , and agree to submit these documents for private review and publish the campaign
+                and donation details if approved.
+              </span>
             </label>
             <div className="mt-6">{error && <Notice error>{error}</Notice>}</div>
             <div className="mt-6 flex flex-col items-center justify-between gap-4 border-t border-line pt-6 sm:flex-row">
@@ -702,8 +726,9 @@ export function CampaignReport({ id, go }: { id: string; go: Navigate }) {
               </div>
               <h2 className="mt-5 text-xl font-extrabold">Evidence Score</h2>
               <p className="mt-2 text-sm leading-6 text-muted">
-                Evidence completeness, calculated using fixed rules. Standard publication threshold:
-                {" "}{campaign.minimum_score}/100, with human approval. Score does not guarantee legitimacy.
+                Evidence completeness, calculated using fixed rules. Standard publication threshold:{" "}
+                {campaign.minimum_score}/100, with human approval. Score does not guarantee
+                legitimacy.
               </p>
               {campaign.threshold_overridden && (
                 <p className="mt-4 rounded-xl bg-amber-50 p-3 text-sm font-semibold text-amber-800">
@@ -766,20 +791,38 @@ export function CampaignReport({ id, go }: { id: string; go: Navigate }) {
             </dl>
           </section>
           <section className="report-card mt-5" aria-labelledby="donation-heading">
-            <h2 id="donation-heading" className="text-xl font-extrabold">Donation Methods</h2>
+            <h2 id="donation-heading" className="text-xl font-extrabold">
+              Donation Methods
+            </h2>
             <p className="mt-2 text-sm leading-6 text-muted">
               Organizer-provided payment details reviewed with this campaign. Confirm the account
               name and recipient in your payment app before sending funds.
             </p>
             {campaign.payment_method || campaign.payment_details ? (
               <dl className="mt-5 space-y-4">
-                {campaign.payment_method && <div><dt className="text-sm text-muted">Payment method</dt><dd className="mt-1 whitespace-pre-wrap break-words font-semibold">{campaign.payment_method}</dd></div>}
-                {campaign.payment_details && <div><dt className="text-sm text-muted">Account details</dt><dd className="mt-1 whitespace-pre-wrap break-words font-semibold">{campaign.payment_details}</dd></div>}
+                {campaign.payment_method && (
+                  <div>
+                    <dt className="text-sm text-muted">Payment method</dt>
+                    <dd className="mt-1 whitespace-pre-wrap break-words font-semibold">
+                      {campaign.payment_method}
+                    </dd>
+                  </div>
+                )}
+                {campaign.payment_details && (
+                  <div>
+                    <dt className="text-sm text-muted">Account details</dt>
+                    <dd className="mt-1 whitespace-pre-wrap break-words font-semibold">
+                      {campaign.payment_details}
+                    </dd>
+                  </div>
+                )}
               </dl>
-            ) : !campaign.qr_codes.length && (
-              <p className="mt-5 rounded-xl bg-canvas p-4 text-sm text-muted">
-                No donation methods have been published for this campaign.
-              </p>
+            ) : (
+              !campaign.qr_codes.length && (
+                <p className="mt-5 rounded-xl bg-canvas p-4 text-sm text-muted">
+                  No donation methods have been published for this campaign.
+                </p>
+              )
             )}
             {campaign.qr_codes.length ? (
               <div className="mt-6 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
@@ -791,7 +834,9 @@ export function CampaignReport({ id, go }: { id: string; go: Navigate }) {
                       className="mx-auto aspect-square w-full max-w-64 object-contain"
                       loading="lazy"
                     />
-                    <figcaption className="mt-3 break-words text-center text-sm font-bold">{qr.label}</figcaption>
+                    <figcaption className="mt-3 break-words text-center text-sm font-bold">
+                      {qr.label}
+                    </figcaption>
                   </figure>
                 ))}
               </div>
@@ -800,7 +845,9 @@ export function CampaignReport({ id, go }: { id: string; go: Navigate }) {
             )}
           </section>
           <section className="report-card mt-5" aria-labelledby="transparency-heading">
-            <h2 id="transparency-heading" className="text-xl font-extrabold">Fund Transparency</h2>
+            <h2 id="transparency-heading" className="text-xl font-extrabold">
+              Fund Transparency
+            </h2>
             <p className="mt-2 text-sm leading-6 text-muted">
               Organizer-reported funds, reviewed by administrators before publication. PanataanPH
               does not collect payments or independently confirm bank balances.
@@ -813,13 +860,16 @@ export function CampaignReport({ id, go }: { id: string; go: Navigate }) {
               ].map(([label, cents]) => (
                 <div key={label} className="min-w-0 rounded-2xl bg-canvas p-4">
                   <dt className="text-sm text-muted">{label}</dt>
-                  <dd className="mt-2 break-words text-xl font-extrabold">{money(Number(cents) / 100)}</dd>
+                  <dd className="mt-2 break-words text-xl font-extrabold">
+                    {money(Number(cents) / 100)}
+                  </dd>
                 </div>
               ))}
             </dl>
             <div className="mt-5">
               <p className="text-sm font-semibold">
-                {money(campaign.transparency.received_centavos / 100)} reported of {money(campaign.target_amount)} target
+                {money(campaign.transparency.received_centavos / 100)} reported of{" "}
+                {money(campaign.target_amount)} target
               </p>
               <progress
                 value={campaign.transparency.received_centavos / 100}
@@ -831,13 +881,23 @@ export function CampaignReport({ id, go }: { id: string; go: Navigate }) {
             {campaign.transparency.entries.length ? (
               <ul className="mt-6 divide-y divide-line">
                 {campaign.transparency.entries.map((entry) => (
-                  <li key={entry.public_id} className="flex flex-col justify-between gap-3 py-4 sm:flex-row">
+                  <li
+                    key={entry.public_id}
+                    className="flex flex-col justify-between gap-3 py-4 sm:flex-row"
+                  >
                     <div className="min-w-0">
-                      <p className="whitespace-pre-wrap break-words text-sm font-semibold">{entry.description}</p>
-                      <p className="mt-1 text-xs text-muted">{date(entry.occurred_on)} · Admin-reviewed report</p>
+                      <p className="whitespace-pre-wrap break-words text-sm font-semibold">
+                        {entry.description}
+                      </p>
+                      <p className="mt-1 text-xs text-muted">
+                        {date(entry.occurred_on)} · Admin-reviewed report
+                      </p>
                     </div>
-                    <p className={`shrink-0 text-sm font-bold ${entry.kind === "received" ? "text-success" : "text-ink"}`}>
-                      {entry.kind === "received" ? "Received" : "Spent"} {money(entry.amount_centavos / 100)}
+                    <p
+                      className={`shrink-0 text-sm font-bold ${entry.kind === "received" ? "text-success" : "text-ink"}`}
+                    >
+                      {entry.kind === "received" ? "Received" : "Spent"}{" "}
+                      {money(entry.amount_centavos / 100)}
                     </p>
                   </li>
                 ))}

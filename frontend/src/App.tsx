@@ -25,6 +25,7 @@ import { LoginPage } from "./components/AuthPages";
 import { AdminPage } from "./components/AdminPage";
 import { ProfilePage } from "./components/ProfilePage";
 import { AboutPage } from "./components/AboutPage";
+import { TermsPage } from "./components/TermsPage";
 import { getCurrentUser, logout, type User } from "./lib/accountApi";
 
 type Route = string;
@@ -46,6 +47,7 @@ const routeFromPath = (): Route => {
       "/my-campaigns",
       "/admin",
       "/about",
+      "/terms",
     ].includes(path)
     ? (path as Route)
     : "/";
@@ -169,8 +171,10 @@ function Navbar({
     ["Campaigns", "/campaigns"],
     ["About", "/about"],
   ];
-  if (!user || (user.role !== "admin" && user.role !== "lgu")) items.splice(1, 0, ["Submit a Fundraiser", "/verify"]);
-  if (user && user.role !== "admin" && user.role !== "lgu") items.push(["My Campaigns", "/my-campaigns"]);
+  if (!user || (user.role !== "admin" && user.role !== "lgu"))
+    items.splice(1, 0, ["Submit a Fundraiser", "/verify"]);
+  if (user && user.role !== "admin" && user.role !== "lgu")
+    items.push(["My Campaigns", "/my-campaigns"]);
   if (user?.role === "admin" || user?.role === "lgu") items.push(["Admin", "/admin"]);
 
   return (
@@ -266,6 +270,9 @@ function Footer({ go }: { go: (route: Route) => void }) {
         <div className="flex flex-wrap gap-x-7 gap-y-3 text-sm font-medium text-muted md:justify-end">
           <button className="footer-link" onClick={() => go("/#privacy")}>
             Privacy
+          </button>
+          <button className="footer-link" onClick={() => go("/terms")}>
+            Terms
           </button>
           <button className="footer-link" onClick={() => go("/#how")}>
             How It Works
@@ -708,6 +715,7 @@ export default function App() {
           </main>
         ))}
       {route === "/about" && <AboutPage go={go} />}
+      {route === "/terms" && <TermsPage go={go} />}
       {route === "/verify/processing" && <SubmissionReport submission={submission} go={go} />}
       {route === "/verify/report" && <SubmissionReport submission={submission} go={go} />}
       {route === "/campaigns" && <CampaignDirectory go={go} />}

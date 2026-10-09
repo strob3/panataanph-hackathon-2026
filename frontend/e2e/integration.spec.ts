@@ -40,6 +40,7 @@ test("submission persists to the backend and stays out of the directory", async 
   await page.getByLabel("Full name", { exact: true }).fill("Browser Test Organizer");
   await page.getByLabel("Email", { exact: true }).fill(`organizer-${Date.now()}@example.test`);
   await page.getByLabel("Password", { exact: true }).fill("browser-test-password-123");
+  await page.getByRole("checkbox", { name: /Terms of Service/i }).check();
   await page.getByRole("button", { name: "Create account", exact: true }).click();
   await expect(page.getByRole("heading", { level: 1, name: "Submit a Fundraiser" })).toBeVisible();
   await page.getByLabel("Organizer name").fill("Browser Test Organizer");
