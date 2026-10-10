@@ -37,6 +37,7 @@ export default defineConfig({
         PANATAANPH_DB_PATH: database,
         PANATAANPH_STORAGE_PATH: path.join(run, "storage"),
         PYTHONPATH: path.join(root, "src"),
+        PANATAANPH_RATE_LIMIT: "false",
       },
     },
     {

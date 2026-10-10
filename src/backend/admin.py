@@ -13,6 +13,7 @@ from backend import crud
 from backend.auth import AdminUser, Database, UserResponse
 from backend.models import AccountReview, Campaign, Document, User, VerificationFinding
 from backend.services.llm import EXTRACTION_FIELDS, sanitize_extracted_data
+from backend.schemas import ReportResolve
 from backend.services.scoring import MIN_VERIFICATION_SCORE, score_campaign
 
 router = APIRouter(prefix="/api/admin", tags=["admin review"])
@@ -75,6 +76,19 @@ def campaign_detail(campaign: Campaign) -> dict:
         "findings": [{name: getattr(finding, name) for name in ["criterion", "points_awarded", "points_possible", "details"]} for finding in campaign.findings],
         "reviews": [{name: getattr(review, name) for name in ["admin_username", "decision", "reason", "previous_status", "new_status", "reviewed_at", "threshold_override", "override_reason", "warnings_resolved"]} for review in sorted(campaign.reviews, key=lambda review: review.id, reverse=True)],
         "fund_updates": [{name: getattr(update, name) for name in ["public_id", "kind", "amount_centavos", "description", "occurred_on", "status", "review_reason", "created_at"]} for update in sorted(campaign.fund_updates, key=lambda update: update.id, reverse=True)],
+        "reports": [
+            {
+                "id": report.id,
+                "reason": report.reason,
+                "reporter_name": report.reporter_name,
+                "reporter_email": report.reporter_email,
+                "status": report.status,
+                "admin_response": report.admin_response,
+                "created_at": report.created_at,
+                "resolved_at": report.resolved_at,
+            }
+            for report in sorted(campaign.reports, key=lambda r: r.id, reverse=True)
+        ],
     }
 
 
@@ -169,3 +183,17 @@ def review_campaign(public_id: str, data: CampaignDecision, db: Database, review
                        warnings_resolved=data.warnings_resolved)
     db.refresh(result)
     return campaign_detail(result)
+
+
+@router.post("/reports/{report_id}/resolve")
+def resolve_campaign_report(
+    report_id: int,
+    data: ReportResolve,
+    db: Database,
+    user: AdminUser,
+) -> dict:
+    result = crud.resolve_report(db, report_id, data.admin_response, data.status)
+    if result is None:
+        raise HTTPException(404, "Report not found")
+    return {"status": "ok", "report_id": report_id, "report_status": result.status}
+

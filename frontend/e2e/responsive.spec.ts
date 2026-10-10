@@ -8,6 +8,7 @@ for (const width of [320, 375, 768, 1280]) {
     const routes = [
       ["/", "Verify before you give."],
       ["/about", "Clear evidence. Human review. Informed giving."],
+      ["/terms", "Terms of Service"],
       ["/campaigns", "Relief Campaign Directory"],
       ["/login", "Sign in to PanataanPH"],
       ["/register", "Create your account"],

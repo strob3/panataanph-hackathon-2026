@@ -102,6 +102,18 @@ def main_test():
             assert health_resp.status_code == 200
             print(f"   Response: {health_resp.json()}")
 
+            # Register and login test organizer
+            client.post("/api/auth/register", json={
+                "name": "Juan Dela Cruz",
+                "email": "juan@example.ph",
+                "password": "strongPassword123",
+            })
+            login_resp = client.post("/api/auth/login", json={
+                "email": "juan@example.ph",
+                "password": "strongPassword123",
+            })
+            assert login_resp.status_code == 200, f"Login failed: {login_resp.text}"
+
             # 2. Submit campaign with PDF permit
             print("\n2. Submitting Campaign + Sample DSWD Permit PDF...")
             campaign_payload = {

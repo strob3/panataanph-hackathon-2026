@@ -1,53 +1,165 @@
 # PanataanPH
 
-A verified directory of Philippine relief drives and fundraisers, with private evidence submissions and human review.
+### *Verify Before You Give*
 
-The responsive React frontend from the downloaded PanataanPH project is integrated in `frontend/`. It uses Vite, TypeScript, and Tailwind CSS. The existing SQLAlchemy models and SQLite database remain in `src/backend/` and `data/panataanph.db`.
+---
 
-## Run locally
+## Problem
 
-Use Python 3.10+ and Node.js 20.19+ or 22.12+. Run these commands from the repository root.
+During typhoons, floods, fires, and other emergencies in the Philippines, donation drives spread rapidly through Facebook, Messenger, and other social platforms. Donors often receive nothing more than a screenshot, a QR code or GCash number, an organization name, and a short appeal asking for immediate help.
 
-Backend setup (PowerShell):
+Checking whether a fundraiser is legitimate takes time — and during disasters, internet access may be unreliable. There is no centralized way for donors to inspect supporting evidence like permits, organizer identities, or payment details before deciding to give.
 
-```powershell
-python -m venv .venv
-.\.venv\Scripts\python.exe -m pip install -r requirements-dev.txt
-.\.venv\Scripts\python.exe -m uvicorn backend.main:app --app-dir src --reload --host 127.0.0.1 --port 8000
+**PanataanPH solves this** by creating an evidence layer between social-media fundraising and the donor. Instead of:
+
+```
+Facebook Post → Donate
 ```
 
-If `python` selects an unintended installation, use an explicit Python executable path for the first command. Activation is optional.
+PanataanPH adds:
 
-Frontend, in another terminal:
-
-```powershell
-cd frontend
-npm.cmd ci
-npm.cmd run dev
+```
+Facebook Post → Supporting Evidence → Local AI Analysis → Evidence Report → Human Decision → Donate
 ```
 
-Open **http://127.0.0.1:5173**. API documentation is at **http://127.0.0.1:8000/docs**. Vite proxies `/api` requests to the local backend. `npm.cmd` avoids PowerShell's script execution policy restrictions; other shells can use `npm`.
+The AI doesn't say *"This campaign is a scam."* It says *"Here is what matches, what is missing, and what you should verify."*
 
-On macOS/Linux, use `.venv/bin/python` instead of `.venv\Scripts\python.exe`.
+---
 
-## Integrated workflows
+## Project Name
 
-- `/`: responsive landing page; its evidence illustration is labeled as an example.
-- `/campaigns`: verified campaigns from SQLite, with search, location, cause, urgency, and pagination.
-- `/campaigns/:public_id`: public campaign details, recorded evidence score and criterion values, and a downloadable public JSON report.
-- `/register` and `/login`: local organizer accounts and revocable HttpOnly cookie sessions. Public registration never grants admin/LGU privileges.
-- `/verify`: login required; organizer submission with up to four private PDF/JPG/PNG documents and a separate optional donation QR image (JPG/PNG), each at most 10 MB. QR label and donation details become public only after approval.
-- `/verify/report`: submission confirmation. `/my-campaigns` shows the signed-in organizer's submissions, review feedback, and fund-report history.
-- `/admin`: protected admin/LGU queue, organizer account verification, private documents and extraction results, evidence checklist, campaign decisions and review history, and fund-report review.
-- `/about`: consistent responsive explanation of privacy, evidence completeness, and human review.
+**PanataanPH** — a transparent, verified directory of Philippine relief drives and fundraisers with local AI-powered document verification.
 
-Reviewer accounts follow separation of duties: admin/LGU accounts can review and approve campaigns but cannot submit fundraising campaigns. Organizers submit campaigns through separate organizer accounts.
+---
 
-Submissions remain `pending` until a reviewer starts `under_review`, then selects `needs_information`, `verified`, or `rejected` with a reason. **80/100 makes a campaign eligible for human approval; scores never publish campaigns automatically.** Approval also requires a verified organizer account and explicit confirmation that warnings and major inconsistencies have been reviewed and resolved. An admin can approve a lower score only through an explicit threshold exception with a separate recorded reason. Public details identify this exception. Unapproved submissions are excluded from lists, direct public details, and donation QR endpoints. Revoking organizer verification hides that organizer's campaigns immediately. Previously verified fictional demo rows without an owner remain readable only if they meet the score threshold; new submissions always have an authenticated owner.
+## Brief Description
 
-When reviewers request additional evidence, organizers upload private supporting files under `/my-campaigns`. The campaign returns to `under_review`, its previous score is cleared, and the original feedback and response remain in review history. Uploads never approve or publish a campaign.
+PanataanPH is a web application that helps Filipino donors verify fundraising campaigns before donating. It combines **local AI document extraction** with **human-led verification** to evaluate fundraising legitimacy transparently.
 
-Score rules use the documented 30/20/20/20/10 weights: applicable authorizations confirmed against evidence (30), verified organizer identity confirmed against evidence (20), matching donation details confirmed by reviewer (20), campaign completeness (4 points each for title/description, purpose, location, beneficiaries, and positive target; 20 total), and reviewed campaign history (10). Ordinary approval requires the authorizations, identity, and payment consistency checklist; an audited threshold exception can account for alternative evidence but cannot bypass account verification or unresolved warnings. The score measures evidence completeness; it does not predict fraud or guarantee authenticity.
+Core capabilities:
+
+- **QuickVerify** — Upload fundraiser screenshots, permits, and payment details. Local AI reads, extracts, and compares evidence directly on the host device, even offline.
+- **Public Campaign Directory** — Browse, search, and filter verified relief drives by location, cause, and urgency.
+- **Transparent Evidence Scoring** — A documented 100-point evidence-completeness score with visible breakdown — not a fraud prediction.
+- **Human-in-the-Loop Review** — AI assists; authorized human reviewers make all final verification decisions.
+- **Privacy-First** — All AI inference and OCR run locally. Sensitive documents are never sent to external cloud AI APIs.
+
+---
+
+## Why Local AI?
+
+This is the core differentiator and directly addresses the hackathon challenge:
+
+| Advantage | Description |
+|---|---|
+| **Offline Use** | Verification works when internet is weak or unavailable during a disaster |
+| **Privacy** | Sensitive documents and payment info never leave the user's device/host |
+| **Speed & Cost** | OCR and AI analysis happen locally — no API call per document |
+
+> The core Local AI functionality does not depend on any cloud API. Remote hosting and authentication are secondary components.
+
+---
+
+## Tools
+
+| Layer | Technology | Purpose |
+|---|---|---|
+| Frontend | React, Vite, TypeScript, Tailwind CSS | Public pages, organizer workflows, admin interface |
+| Backend | FastAPI, Python 3.10+ | API, authentication, campaign workflows, evidence processing |
+| Database | SQLite, SQLAlchemy | Campaign records, accounts, review history |
+| OCR | `pypdf` + PaddleOCR | Local text extraction from PDFs, scans, and images |
+| Local AI Runtime | Ollama | Run the language model locally |
+| Testing | pytest, Playwright | Backend tests, browser workflow checks |
+| Version Control | Git + GitHub | Collaboration and source control |
+| Containerization | Docker, Docker Compose | Deployment with persistent storage mounts |
+
+---
+
+## Models
+
+| Model | Runtime | Purpose |
+|---|---|---|
+| **Qwen3 4B** (`qwen3:4b`) | Ollama (local) | Document classification, structured field extraction, evidence comparison |
+
+The LLM's job is to understand OCR text and return structured information:
+
+```json
+{
+  "organization": "Bayanihan Relief Foundation",
+  "permit_number": "DSWD-NCR-2026-00123",
+  "payment_recipient": "Juan Dela Cruz",
+  "beneficiary": "Families affected by Typhoon X",
+  "location": "Quezon City"
+}
+```
+
+**AI Guardrails:**
+- LLM extracts structured fields — it must return `null` for missing or unreadable fields, never hallucinate.
+- LLM does **not** decide campaign legitimacy or predict fraud.
+- Verification scores are computed by deterministic Python logic (`services/scoring.py`), never by LLM prompts.
+
+---
+
+## Assets
+
+### Project Structure
+
+```text
+PanataanPH/
+├── frontend/              # React, Vite, TypeScript, Tailwind
+├── src/
+│   └── backend/           # FastAPI application and account management
+├── data/
+│   └── panataanph.db      # SQLite demo database
+├── storage/               # Private uploaded documents (git-ignored)
+├── tests/                 # Backend and browser tests
+├── scripts/               # Utility and extraction test scripts
+├── docs/                  # Documentation
+├── dev.bat / dev.sh       # One-click development startup
+├── test_extraction.bat/sh # Extraction pipeline test
+├── Dockerfile             # Container build
+├── docker-compose.yml     # Production deployment
+├── requirements-dev.txt   # Python dependencies
+├── AGENTS.md              # Agent instruction file
+├── IMPLEMENTATION.md      # Implementation details
+├── PROJECT_CONTEXT.md     # Project context document
+├── WORKFLOW.md            # Git workflow guide
+└── README.md
+```
+
+### Key Pages
+
+| Page | Route | Description |
+|---|---|---|
+| Landing | `/` | Responsive homepage with evidence illustration |
+| Campaign Directory | `/campaigns` | Search & filter with pagination |
+| Campaign Detail | `/campaigns/:public_id` | Score breakdown, evidence, downloadable JSON report |
+| About | `/about` | Evidence completeness, privacy, human review explained |
+| Register / Login | `/register`, `/login` | Organizer authentication |
+| Submit Campaign | `/verify` | Campaign submission with document uploads |
+| My Campaigns | `/my-campaigns` | Organizer dashboard, feedback, fund reports |
+| Admin Dashboard | `/admin` | Review queue, document access, decisions, audit history |
+
+---
+
+## Evidence Score
+
+A transparent, rules-based 100-point score measuring **evidence completeness** — not a prediction of fraud:
+
+| Criterion | Weight |
+|---|---:|
+| Applicable authorizations confirmed against evidence | 30 |
+| Organizer identity verified against evidence | 20 |
+| Donation details confirmed as consistent by a reviewer | 20 |
+| Campaign information completeness | 20 |
+| Reviewed campaign history | 10 |
+| **Total** | **100** |
+
+> *"The score represents the amount of supporting evidence available. It does not represent the probability that a fundraiser is legitimate."*
+
+A score of **80/100 or higher** makes a campaign eligible for human approval. Scores never publish campaigns automatically.
+
+---
 
 Uploaded documents, organizer contact details, registration numbers, extraction results, and reviewer notes remain private. Only a designated donation QR image is published after approval. No document data is sent to external AI services. Supporting documents are extracted locally in the background after submission or additional-evidence upload. Reviewers can inspect extracted text, failure notes, and retry extraction from the admin document panel. Manual verification works without AI. The frontend has no external font dependency.
 
@@ -62,56 +174,128 @@ ollama pull qwen3:4b
 ```
 
 The check uses synthetic images, warms PaddleOCR models, and verifies both image and multi-page scanned-PDF extraction. Restart the backend after installation. Once models are cached, OCR runs offline. Run Ollama locally for structured field extraction; when unavailable, extracted text is still saved and missing fields remain null. Unreadable documents and missing OCR dependencies are recorded as failed with a reviewer-visible reason. QR donation images are separate from private evidence and are not processed as evidence.
+## Campaign Lifecycle
 
-Organizers report received/spent funds under `/my-campaigns`. Every entry needs admin approval before affecting public totals. PHP values are stored as integer centavos. Public pages show received, spent, balance, target progress, and approved dated entries. These are reviewed organizer reports, not automatic payment reconciliation; zero means no approved reports. Donations happen through the organizer's payment provider.
-
-## Set up an admin or LGU reviewer
-
-No default privileged credentials exist. Provision authorized reviewers locally, choose a password when prompted, then log in at `/login` and open `/admin`:
-
-```powershell
-cd src
-..\.venv\Scripts\python.exe -m backend.manage_accounts create --email reviewer@example.com --name "Authorized Reviewer" --role lgu
-cd ..
+```
+pending → under_review → verified
+                       → needs_information (organizer uploads more evidence → back to under_review)
+                       → rejected
 ```
 
-Use `--role admin` for a project administrator. The command never promotes existing public registrations. Passwords are hashed with scrypt; session tokens are hashed in SQLite. Account verification and campaign decisions record reviewer identity and reason. State-changing cookie requests enforce the same origin; Vite preserves the frontend Host header when proxying.
+Only authorized human reviewers can grant or revoke verified status. All decisions are recorded in the audit trail.
 
-If the email already exists because it was registered incorrectly, repair it explicitly:
+---
+
+## Quick Start
+
+### Windows
 
 ```powershell
-cd src
-..\.venv\Scripts\python.exe -m backend.manage_accounts reset --email reviewer@example.com --name "Authorized Reviewer" --role lgu
-cd ..
+.\dev.bat
 ```
 
-This resets the password, marks the account verified, assigns the selected reviewer role, and revokes its existing sessions.
+### macOS / Linux
 
-Review order: inspect submission documents and donation destination, verify organizer account, start campaign review, confirm evidence checklist, and save the final decision. A verified campaign's fund reports then appear in the same admin detail for separate approval.
+```bash
+chmod +x dev.sh
+./dev.sh
+```
 
-Startup adds account/session/QR/fund/audit tables and a nullable campaign ownership column to existing databases without deleting campaigns.
+### Local URLs
 
-The included database and `backend.seed` contain fictional demonstration data. Existing scores are displayed as stored; do not treat demo campaigns as real donation opportunities. To start with an empty database, set `PANATAANPH_DB_PATH` to a new file before starting the backend. Do not delete the included database to reset your environment.
+| Service | URL |
+|---|---|
+| Frontend | http://127.0.0.1:5173 |
+| Backend API Docs | http://127.0.0.1:8000/docs |
+
+### Local AI Setup
+
+```bash
+# 1. Install Ollama from https://ollama.com
+# 2. Download the model
+ollama pull qwen3:4b
+# 3. Start the service
+ollama serve
+```
+
+---
+
+## Manual Setup
+
+### Backend
+
+```bash
+python -m venv .venv
+source .venv/bin/activate          # Linux/macOS
+# .\.venv\Scripts\activate         # Windows
+pip install -r requirements-dev.txt
+uvicorn backend.main:app --app-dir src --reload --host 127.0.0.1 --port 8000
+```
+
+### Frontend
+
+```bash
+cd frontend
+npm ci
+npm run dev
+```
+
+---
+
+## Testing
+
+```bash
+# Backend tests
+.venv/bin/python -m pytest tests/ -v
+
+# Frontend lint + build
+cd frontend && npm run lint && npm run build
+
+# Browser tests (Playwright)
+cd frontend && npx playwright install chromium && npm test
+```
+
+---
+
+## Docker Deployment
+
+```bash
+docker compose up -d
+```
+
+Persistent mounts: `./data` → `/app/data` (database), `./storage` → `/app/storage` (private documents).
+
+---
 
 ## Configuration
 
 | Variable | Default | Purpose |
-| --- | --- | --- |
-| `PANATAANPH_DB_PATH` | `data/panataanph.db` | SQLite database file; inherited by the backend process |
-| `PANATAANPH_STORAGE_PATH` | `storage/` | Private document directory; inherited by the backend process |
-| `PANATAANPH_API_TARGET` | `http://127.0.0.1:8000` | Vite development API proxy target |
+|---|---|---|
+| `PANATAANPH_DB_PATH` | `data/panataanph.db` | SQLite database file |
+| `PANATAANPH_STORAGE_PATH` | `storage/` | Private document storage |
+| `PANATAANPH_API_TARGET` | `http://127.0.0.1:8000` | Vite dev API proxy target |
+| `OLLAMA_HOST` | `http://127.0.0.1:11434` | Ollama API endpoint |
+| `OLLAMA_MODEL` | `qwen3:4b` | Local LLM model |
+| `PANATAANPH_ALLOWED_ORIGINS` | *(empty)* | CORS allowed origins |
 
-For a production frontend build, serve `frontend/dist/` with SPA fallback and proxy `/api` to FastAPI on the same origin, preserving the frontend Host and scheme. Keep `storage/` outside public static roots. Local HTTP sessions use SameSite/HttpOnly; HTTPS sessions also use Secure cookies.
+---
 
-## Verification
+## Limitations
 
-```powershell
-.\.venv\Scripts\python.exe -m pytest tests/ -v
-cd frontend
-npm.cmd run lint
-npm.cmd run build
-npx.cmd playwright install chromium
-npm.cmd test
-```
+PanataanPH improves transparency and supports human review — it does not certify campaigns as risk-free.
 
-Backend tests use an isolated in-memory database and temporary upload storage; they do not modify the included database. The frontend build includes strict TypeScript checking. Browser tests cover signup/login/logout, submissions, reviewer approval, donation QR, fund transparency, and layouts at 320/375/768/1280px on desktop/mobile. They use a copied database and private storage under ignored `.e2e/` folders, and provision a fictional reviewer only in that disposable database. Test servers start automatically on ports 8100 and 5174; both ports must be free. Browser installation requires network access once.
+- AI extraction may be incorrect or incomplete.
+- Document text extraction does not prove authenticity.
+- Scores reflect evidence criteria, not fraud prediction.
+- Fund reports are reviewed organizer submissions, not automatic financial reconciliation.
+- Privacy depends on actual deployment, access controls, and operational practices.
+
+---
+
+## Team
+
+*PanataanPH Hackathon Team — AppBuilders Hackathon 2026*
+
+## License
+
+Add the project's chosen license before public release.

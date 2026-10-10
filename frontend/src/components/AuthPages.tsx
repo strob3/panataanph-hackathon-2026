@@ -1,6 +1,6 @@
 import { useState } from "react";
 import type { FormEvent } from "react";
-import { ArrowRight, ShieldCheck } from "lucide-react";
+import { ArrowRight, Eye, EyeOff, ShieldCheck } from "lucide-react";
 import { login, registerAccount } from "../lib/accountApi";
 import type { User } from "../lib/accountApi";
 
@@ -16,6 +16,7 @@ export function LoginPage({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [created, setCreated] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
   const next = new URLSearchParams(window.location.search).get("next");
   const switchPage = (path: string) =>
     go(`${path}${next ? `?next=${encodeURIComponent(next)}` : ""}`);
@@ -28,6 +29,10 @@ export function LoginPage({
     const name = String(fields.get("name") ?? "").trim();
     if ((register && !created && !name) || !email || !password) {
       setError("Complete all required fields.");
+      return;
+    }
+    if (register && !created && !fields.get("terms")) {
+      setError("You must agree to the Terms of Service.");
       return;
     }
     setBusy(true);
@@ -62,7 +67,7 @@ export function LoginPage({
               : "Manage your fundraisers or access your assigned review dashboard."}
           </p>
         </div>
-        <form onSubmit={submit} className="report-card mt-8 space-y-5">
+        <form onSubmit={submit} noValidate className="report-card mt-8 space-y-5">
           {error && (
             <p role="alert" className="rounded-xl bg-red-50 p-3 text-sm text-brand">
               {error}
@@ -100,24 +105,49 @@ export function LoginPage({
           </label>
           <label className="block text-sm font-semibold">
             Password
-            <input
-              name="password"
-              type="password"
-              aria-label="Password"
-              required
-              minLength={register ? 10 : undefined}
-              maxLength={128}
-              autoComplete={register ? "new-password" : "current-password"}
-              disabled={busy}
-              aria-describedby={register ? "password-help" : undefined}
-              className="mt-2 w-full rounded-xl border border-line p-3"
-            />
+            <div className="relative mt-2">
+              <input
+                name="password"
+                type={showPassword ? "text" : "password"}
+                aria-label="Password"
+                required
+                minLength={register ? 10 : undefined}
+                maxLength={128}
+                autoComplete={register ? "new-password" : "current-password"}
+                disabled={busy}
+                aria-describedby={register ? "password-help" : undefined}
+                className="w-full rounded-xl border border-line p-3 pr-11"
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword((prev) => !prev)}
+                aria-label={showPassword ? "Hide password" : "Show password"}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted hover:text-ink focus:outline-none"
+              >
+                {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+              </button>
+            </div>
             {register && (
               <span id="password-help" className="mt-2 block text-xs font-normal text-muted">
                 Use 10–128 characters.
               </span>
             )}
           </label>
+          {register && !created && (
+            <label className="flex items-start gap-3 text-sm leading-6">
+              <input name="terms" type="checkbox" disabled={busy} className="mt-1" />
+              <span>
+                I agree to the{" "}
+                <button
+                  type="button"
+                  className="font-semibold text-brand underline underline-offset-4"
+                  onClick={() => switchPage("/terms")}
+                >
+                  Terms of Service
+                </button>
+              </span>
+            </label>
+          )}
           <button className="button button-primary w-full" type="submit" disabled={busy}>
             {busy ? "Signing in…" : register && !created ? "Create account" : "Sign in"}
             <ArrowRight size={16} />

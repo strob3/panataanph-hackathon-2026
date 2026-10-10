@@ -411,3 +411,42 @@ def test_requested_evidence_rejects_other_statuses_and_cleans_invalid_batch(inte
     assert len(db.scalars(select(Document).where(Document.campaign_id == campaign.id)).all()) == 1
     assert campaign.reviews == []
     assert list((tmp_path / "private").iterdir()) == []
+
+
+def test_admin_campaign_reports_and_resolution(client: TestClient, db: Session, campaign, reviewer: User) -> None:
+    # Submit report via crud
+    report = crud.create_report(
+        db,
+        campaign_id=campaign.id,
+        reason="Missing local permit proof",
+        reporter_name="Citizen Reporter",
+        reporter_email="citizen@example.com",
+    )
+
+    # Reviewer logs in
+    login(client, reviewer.email, "review-password")
+
+    # Fetch campaign detail
+    res = client.get(f"/api/admin/campaigns/{campaign.public_id}")
+    assert res.status_code == 200
+    detail = res.json()
+    assert "reports" in detail
+    assert len(detail["reports"]) == 1
+    assert detail["reports"][0]["id"] == report.id
+    assert detail["reports"][0]["reason"] == "Missing local permit proof"
+    assert detail["reports"][0]["status"] == "pending"
+
+    # Resolve report
+    resolve_res = client.post(
+        f"/api/admin/reports/{report.id}/resolve",
+        json={"admin_response": "Evidence inspected and verified genuine", "status": "reviewed"},
+    )
+    assert resolve_res.status_code == 200
+    assert resolve_res.json()["report_status"] == "reviewed"
+
+    # Verify db state
+    db.refresh(report)
+    assert report.status == "reviewed"
+    assert report.admin_response == "Evidence inspected and verified genuine"
+    assert report.resolved_at is not None
+

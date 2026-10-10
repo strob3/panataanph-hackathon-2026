@@ -10,15 +10,17 @@ from typing import Annotated, AsyncIterator, Literal
 from uuid import uuid4
 
 from fastapi import BackgroundTasks, Depends, FastAPI, File, Form, HTTPException, Query, UploadFile
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from backend import crud
-from backend.auth import CurrentUser, AdminUser, router as auth_router
+from backend.auth import ALLOWED_ORIGINS, CurrentUser, AdminUser, cleanup_expired_sessions, router as auth_router
 from backend.admin import router as admin_router
-from backend.database import get_db, init_db
+from backend.database import SessionLocal, get_db, init_db
+from backend.security import require_rate_limit, submit_limiter
 from backend.models import (
     Campaign,
     Document,
@@ -37,6 +39,7 @@ from backend.schemas import (
     PublicCampaign,
     PublicFinding,
     PublicFundEntry,
+    ReportCreate,
     SubmissionResponse,
 )
 
@@ -59,10 +62,20 @@ FILE_TYPES = {
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     init_db()
+    with SessionLocal() as session:
+        cleanup_expired_sessions(session)
     yield
 
 
 app = FastAPI(title="PanataanPH API", lifespan=lifespan)
+if ALLOWED_ORIGINS:
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=list(ALLOWED_ORIGINS),
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
 app.include_router(auth_router)
 app.include_router(admin_router)
 Database = Annotated[Session, Depends(get_db)]
@@ -127,6 +140,26 @@ def published_campaign(public_id: str, db: Session) -> Campaign:
     return result
 
 
+@app.post(
+    "/api/campaigns/{public_id}/report",
+    status_code=201,
+    dependencies=[Depends(require_rate_limit(submit_limiter, "report"))],
+)
+def report_campaign(public_id: str, data: ReportCreate, db: Database) -> dict:
+    target = crud.get_campaign_by_public_id(db, public_id)
+    if target is None:
+        raise HTTPException(404, "Campaign not found")
+    report = crud.create_report(
+        db,
+        campaign_id=target.id,
+        reason=data.reason,
+        reporter_name=data.reporter_name,
+        reporter_email=data.reporter_email,
+    )
+    return {"status": "submitted", "report_id": report.id}
+
+
+
 def private_file(path: str, file_type: str) -> FileResponse:
     resolved = Path(path).resolve()
     if not resolved.is_relative_to(STORAGE_ROOT.resolve()) or not resolved.is_file():
@@ -172,7 +205,12 @@ async def save_upload(upload: UploadFile, saved: list[Path], *, image_only: bool
     return path, filename, file_type[2], len(contents)
 
 
-@app.post("/api/submissions", response_model=SubmissionResponse, status_code=201)
+@app.post(
+    "/api/submissions",
+    response_model=SubmissionResponse,
+    status_code=201,
+    dependencies=[Depends(require_rate_limit(submit_limiter, "submissions"))],
+)
 async def submit_campaign(
     db: Database,
     user: CurrentUser,

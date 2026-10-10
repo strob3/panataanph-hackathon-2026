@@ -287,7 +287,7 @@ These weights are provisional and should be finalized during implementation.
 - [x] Verify organizer accounts through authorized admin/LGU accounts.
 - [x] Enforce 80/100 eligibility, human approval, resolved warnings, and audited threshold exceptions.
 - [x] Review received/spent fund reports before publishing totals.
-- [ ] Implement campaign reporting and review.
+- [x] Implement campaign reporting and review.
 - [x] Restrict access to admin routes and private documents.
 
 ### Campaign Statuses

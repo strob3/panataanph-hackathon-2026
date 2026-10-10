@@ -8,6 +8,7 @@ import {
   listAdminCampaigns,
   reviewCampaign,
   reviewFundUpdate,
+  resolveCampaignReport,
   verifyAccount,
 } from "../lib/accountApi";
 import type {
@@ -108,6 +109,98 @@ function FundReview({
             disabled={busy || !reason.trim()}
           >
             {busy ? "Saving…" : "Save fund review"}
+          </button>
+        </form>
+      )}
+    </article>
+  );
+}
+
+function CampaignReportItem({
+  report,
+  onResolved,
+}: {
+  report: NonNullable<AdminCampaignDetail["reports"]>[number];
+  onResolved: () => Promise<void>;
+}) {
+  const [response, setResponse] = useState("");
+  const [status, setStatus] = useState<"reviewed" | "dismissed">("reviewed");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  const submit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (busy || !response.trim()) return;
+    setBusy(true);
+    setError("");
+    try {
+      await resolveCampaignReport(report.id, response.trim(), status);
+      await onResolved();
+    } catch (failure) {
+      setError(message(failure));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <article className="rounded-xl border border-line p-4">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="font-bold text-brand">Report #{report.id}</p>
+        <span className={`badge ${report.status === "pending" ? "badge-amber" : "badge-neutral"}`}>
+          {label(report.status)}
+        </span>
+      </div>
+      <p className="mt-2 break-words text-sm font-semibold">{report.reason}</p>
+      <p className="mt-1 text-xs text-muted">
+        Reported on {new Date(report.created_at).toLocaleDateString("en-PH")}
+        {report.reporter_name ? ` by ${report.reporter_name}` : ""}
+        {report.reporter_email ? ` (${report.reporter_email})` : ""}
+      </p>
+      {report.admin_response && (
+        <p className="mt-2 break-words text-sm text-muted">
+          Admin resolution: {report.admin_response}
+        </p>
+      )}
+      {report.status === "pending" && (
+        <form onSubmit={submit} className="mt-4 space-y-3">
+          {error && (
+            <p role="alert" className="text-sm text-brand">
+              {error}
+            </p>
+          )}
+          <label className="block text-sm font-semibold">
+            Resolution decision
+            <select
+              aria-label="Resolution decision"
+              value={status}
+              onChange={(e) => setStatus(e.target.value as "reviewed" | "dismissed")}
+              disabled={busy}
+              className="mt-2 w-full rounded-xl border border-line bg-white p-3 text-sm"
+            >
+              <option value="reviewed">Mark reviewed (verified / addressed)</option>
+              <option value="dismissed">Dismiss report (unfounded / invalid)</option>
+            </select>
+          </label>
+          <label className="block text-sm font-semibold">
+            Resolution notes *
+            <textarea
+              required
+              aria-label="Resolution notes"
+              rows={2}
+              value={response}
+              onChange={(e) => setResponse(e.target.value)}
+              disabled={busy}
+              placeholder="Record findings from investigating this report..."
+              className="mt-2 w-full rounded-xl border border-line p-3 text-sm"
+            />
+          </label>
+          <button
+            type="submit"
+            disabled={busy || !response.trim()}
+            className="button button-primary"
+          >
+            {busy ? "Resolving…" : "Save Resolution"}
           </button>
         </form>
       )}
@@ -523,6 +616,28 @@ function CampaignReview({ id, revision, onReviewed }: { id: string; revision: nu
             ))
           ) : (
             <p className="text-sm text-muted">No fund updates submitted.</p>
+          )}
+        </div>
+      </section>
+
+      <section className="report-card">
+        <h2 className="text-lg font-extrabold">Citizen reports</h2>
+        <p className="mt-2 text-sm leading-6 text-muted">
+          Community-submitted flags and concerns. Reports trigger investigation and do not automatically indicate fraud.
+        </p>
+        <div className="mt-4 space-y-3">
+          {campaign.reports && campaign.reports.length ? (
+            campaign.reports.map((report) => (
+              <CampaignReportItem
+                key={report.id}
+                report={report}
+                onResolved={async () => {
+                  setCampaign(await getAdminCampaign(id));
+                }}
+              />
+            ))
+          ) : (
+            <p className="text-sm text-muted">No citizen reports filed for this campaign.</p>
           )}
         </div>
       </section>
