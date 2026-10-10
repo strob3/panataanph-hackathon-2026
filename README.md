@@ -120,10 +120,6 @@ PanataanPH/
 ├── Dockerfile             # Container build
 ├── docker-compose.yml     # Production deployment
 ├── requirements-dev.txt   # Python dependencies
-├── AGENTS.md              # Agent instruction file
-├── IMPLEMENTATION.md      # Implementation details
-├── PROJECT_CONTEXT.md     # Project context document
-├── WORKFLOW.md            # Git workflow guide
 └── README.md
 ```
 
@@ -298,4 +294,4 @@ PanataanPH improves transparency and supports human review — it does not certi
 
 ## License
 
-Add the project's chosen license before public release.
+MIT

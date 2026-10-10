@@ -1,6 +1,9 @@
 # tokless
 .codegraph/
 
+# info
+hide/
+
 # Python / Bytecode
 __pycache__/
 *.py[cod]
