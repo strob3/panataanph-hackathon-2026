@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Annotated, AsyncIterator, Literal
 from uuid import uuid4
 
-from fastapi import Depends, FastAPI, File, Form, HTTPException, Query, UploadFile
+from fastapi import BackgroundTasks, Depends, FastAPI, File, Form, HTTPException, Query, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
@@ -44,7 +44,7 @@ from backend.schemas import (
 )
 
 from backend.services.scoring import MIN_VERIFICATION_SCORE
-from backend.services.pipeline import run_document_extraction
+from backend.services.pipeline import extract_documents, run_document_extraction
 
 MAX_FILE_BYTES = 10 * 1024 * 1024
 MAX_DOCUMENTS = 4
@@ -214,6 +214,7 @@ async def save_upload(upload: UploadFile, saved: list[Path], *, image_only: bool
 async def submit_campaign(
     db: Database,
     user: CurrentUser,
+    background_tasks: BackgroundTasks,
     campaign: Annotated[str, Form()],
     documents: Annotated[list[UploadFile], File()],
     donation_qr: Annotated[UploadFile | None, File()] = None,
@@ -221,8 +222,8 @@ async def submit_campaign(
 ) -> SubmissionResponse:
     """Save a pending submission and its files as one transaction.
 
-    Files stay in private storage. Extraction/scoring and admin approval are
-    separate workflows; this endpoint never infers evidence or approves a drive.
+    Files stay in private storage. Local extraction runs after saving;
+    scoring and campaign approval require human review.
     """
     if user.role in {"admin", "lgu"}:
         raise HTTPException(403, "Reviewer accounts cannot submit fundraising campaigns")
@@ -243,15 +244,18 @@ async def submit_campaign(
         qr_metadata = await save_upload(donation_qr, saved, image_only=True) if donation_qr else None
 
         result = crud.create_campaign(db, commit=False, owner_id=user.id, **data.model_dump())
+        document_ids: list[int] = []
         for path, filename, file_type_name, size in metadata:
-            crud.create_document(
+            document = crud.create_document(
                 db, result.id, str(path), filename, file_type_name, size, commit=False
             )
+            document_ids.append(document.id)
         if qr_metadata:
             db.add(DonationQRCode(public_id=str(uuid4()), campaign_id=result.id, label=qr_label.strip(),
                                   storage_path=str(qr_metadata[0]), file_type=qr_metadata[2]))
         response = SubmissionResponse(public_id=result.public_id, documents_received=len(metadata))
         db.commit()
+        background_tasks.add_task(extract_documents, document_ids, db.get_bind())
         return response
     except Exception:
         db.rollback()
@@ -287,6 +291,7 @@ class EvidenceResponse(BaseModel):
 
 @app.post("/api/my/campaigns/{public_id}/documents", response_model=EvidenceResponse, status_code=201)
 async def provide_evidence(public_id: str, db: Database, user: CurrentUser,
+                           background_tasks: BackgroundTasks,
                            documents: Annotated[list[UploadFile], File()]) -> EvidenceResponse:
     saved: list[Path] = []
     try:
@@ -295,14 +300,17 @@ async def provide_evidence(public_id: str, db: Database, user: CurrentUser,
             raise HTTPException(409, "Additional evidence is accepted when requested by a reviewer")
         if not 1 <= len(documents) <= MAX_DOCUMENTS:
             raise HTTPException(422, "Provide between 1 and 4 supporting documents")
+        document_ids: list[int] = []
         for upload in documents:
             path, filename, file_type, size = await save_upload(upload, saved)
-            crud.create_document(db, result.id, str(path), filename, file_type, size, commit=False)
+            document = crud.create_document(db, result.id, str(path), filename, file_type, size, commit=False)
+            document_ids.append(document.id)
         result.verification_score = None
         result.score_breakdown = None
         result.findings.clear()
         crud.create_review(db, result.id, f"organizer:{user.id}", "information_submitted",
                            "Organizer provided additional evidence for review", "needs_information", "under_review")
+        background_tasks.add_task(extract_documents, document_ids, db.get_bind())
         return EvidenceResponse(public_id=result.public_id, status="under_review", documents_received=len(documents))
     except Exception:
         db.rollback()
@@ -366,7 +374,7 @@ def report_funds(public_id: str, data: FundUpdateCreate, db: Database, user: Cur
     return entry
 
 @app.get("/api/documents/{document_id}", response_model=DocumentWithExtraction)
-def get_document(document_id: int, db: Database) -> Document:
+def get_document(document_id: int, db: Database, admin: AdminUser) -> Document:
     doc = crud.get_document_by_id(db, document_id)
 
     if doc is None:
@@ -381,7 +389,8 @@ def get_document(document_id: int, db: Database) -> Document:
 )
 async def extract_document(
     document_id: int,
-    db: Database
+    db: Database,
+    admin: AdminUser,
 ) -> ExtractionResult:
 
     doc = crud.get_document_by_id(
@@ -422,7 +431,8 @@ async def extract_document(
 )
 def get_document_extraction(
     document_id: int,
-    db: Database
+    db: Database,
+    admin: AdminUser,
 ) -> ExtractionResult:
 
     doc = crud.get_document_by_id(

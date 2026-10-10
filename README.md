@@ -161,6 +161,19 @@ A score of **80/100 or higher** makes a campaign eligible for human approval. Sc
 
 ---
 
+Uploaded documents, organizer contact details, registration numbers, extraction results, and reviewer notes remain private. Only a designated donation QR image is published after approval. No document data is sent to external AI services. Supporting documents are extracted locally in the background after submission or additional-evidence upload. Reviewers can inspect extracted text, failure notes, and retry extraction from the admin document panel. Manual verification works without AI. The frontend has no external font dependency.
+
+## Local document extraction
+
+Selectable PDFs work with the base requirements. Images and scanned PDFs require the local CPU OCR packages and an initial model download:
+
+```powershell
+.\.venv\Scripts\python.exe -m pip install -r src/backend/requirements-ocr.txt
+.\.venv\Scripts\python.exe scripts/check_ocr.py
+ollama pull qwen3:4b
+```
+
+The check uses synthetic images, warms PaddleOCR models, and verifies both image and multi-page scanned-PDF extraction. Restart the backend after installation. Once models are cached, OCR runs offline. Run Ollama locally for structured field extraction; when unavailable, extracted text is still saved and missing fields remain null. Unreadable documents and missing OCR dependencies are recorded as failed with a reviewer-visible reason. QR donation images are separate from private evidence and are not processed as evidence.
 ## Campaign Lifecycle
 
 ```

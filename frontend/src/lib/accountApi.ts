@@ -39,6 +39,7 @@ export interface AdminCampaignDetail extends AdminCampaignSummary {
   minimum_score: number;
   qr_codes: { public_id: string; label: string; image_url: string }[];
   documents: {
+    id: number;
     public_id: string;
     original_filename: string;
     file_type: string;
@@ -132,6 +133,9 @@ export const listAdminCampaigns = (status: CampaignStatus | "", signal?: AbortSi
 
 export const getAdminCampaign = (id: string, signal?: AbortSignal) =>
   request<AdminCampaignDetail>(`/admin/campaigns/${encodeURIComponent(id)}`, { signal });
+
+export const extractDocument = (id: number) =>
+  request<unknown>(`/documents/${id}/extract`, { method: "POST" });
 
 export const reviewCampaign = (id: string, values: ReviewInput) =>
   request<AdminCampaignDetail>(
