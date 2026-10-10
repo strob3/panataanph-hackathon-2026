@@ -31,6 +31,16 @@ test("reviewers verify accounts and campaigns before QR and reviewed funds becom
     buffer: Buffer.from("%PDF-1.7\nFictional evidence"),
   });
   const qrInput = page.getByLabel("Donation QR image", { exact: false });
+  const qrDropzone = qrInput.locator("../..");
+  await expect(qrDropzone.getByText("Browse files or drag and drop")).toBeVisible();
+  const transfer = await page.evaluateHandle(() => {
+    const data = new DataTransfer();
+    data.items.add(new File(["%PDF-1.7"], "invalid-qr.pdf", { type: "application/pdf" }));
+    return data;
+  });
+  await qrDropzone.dispatchEvent("drop", { dataTransfer: transfer });
+  await transfer.dispose();
+  await expect(page.getByRole("alert")).toContainText("PNG or JPG donation QR");
   await qrInput.setInputFiles({
     name: "test-qr.png",
     mimeType: "image/png",
@@ -39,6 +49,21 @@ test("reviewers verify accounts and campaigns before QR and reviewed funds becom
       "base64",
     ),
   });
+  await page.getByRole("button", { name: "Remove donation QR", exact: true }).click();
+  const imageTransfer = await page.evaluateHandle(() => {
+    const data = new DataTransfer();
+    const bytes = Uint8Array.from(
+      atob(
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+j5ioAAAAASUVORK5CYII=",
+      ),
+      (character) => character.charCodeAt(0),
+    );
+    data.items.add(new File([bytes], "dropped-qr.png", { type: "image/png" }));
+    return data;
+  });
+  await qrDropzone.dispatchEvent("drop", { dataTransfer: imageTransfer });
+  await imageTransfer.dispose();
+  await expect(page.getByText("dropped-qr.png", { exact: true })).toBeVisible();
   await page
     .getByLabel("QR label / provider and account name", { exact: false })
     .fill("Test wallet QR");

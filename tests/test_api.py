@@ -25,6 +25,7 @@ def db() -> Iterator[Session]:
 @pytest.fixture
 def client(db: Session, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[TestClient]:
     monkeypatch.setattr(main, "STORAGE_ROOT", tmp_path / "private")
+    monkeypatch.setattr("backend.services.ocr.extract_text_from_file", lambda *_: ("", "test"))
 
     def database() -> Iterator[Session]:
         yield db
@@ -100,7 +101,8 @@ def test_submission_saves_privately_without_approving(client: TestClient, db: Se
     documents = db.scalars(select(Document)).all()
     assert len(documents) == 2
     assert documents[0].original_filename == "permit.pdf"
-    assert documents[0].processing_status == "pending"
+    db.expire_all()
+    assert documents[0].processing_status == "failed"  # Fixture contains invalid PDF bytes.
     for document in documents:
         path = Path(document.storage_path)
         assert path.parent == main.STORAGE_ROOT

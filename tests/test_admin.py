@@ -44,6 +44,7 @@ def integrated_client(db: Session, tmp_path: Path, monkeypatch: pytest.MonkeyPat
     from backend import main
 
     monkeypatch.setattr(main, "STORAGE_ROOT", tmp_path / "private")
+    monkeypatch.setattr("backend.services.ocr.extract_text_from_file", lambda *_: ("", "test"))
 
     def get_test_db() -> Iterator[Session]:
         yield db

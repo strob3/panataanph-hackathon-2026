@@ -7,18 +7,41 @@ Extracts text from selectable PDFs via pypdf, falling back to OCR
 from __future__ import annotations
 
 import logging
+import os
 import re
+from functools import lru_cache
 from pathlib import Path
+from threading import Lock
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from paddleocr import PaddleOCR
 
 logger = logging.getLogger(__name__)
 
-# Check optional PaddleOCR
-try:
-    from paddleocr import PaddleOCR  # type: ignore
+_OCR_LOCK = Lock()
 
-    _PADDLE_AVAILABLE = True
-except ImportError:
-    _PADDLE_AVAILABLE = False
+
+class TextExtractionError(RuntimeError):
+    """OCR cannot run or the document contains no readable text."""
+
+
+@lru_cache(maxsize=1)
+def get_ocr() -> PaddleOCR:
+    """Load local CPU models once; downloads occur only during initial setup."""
+    os.environ.setdefault("PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK", "True")
+    try:
+        from paddleocr import PaddleOCR
+    except ImportError as exc:
+        raise TextExtractionError(
+            "OCR dependencies missing. Install src/backend/requirements-ocr.txt and restart the backend."
+        ) from exc
+    # MKL-DNN fails on these OCR models with the Windows CPU runtime.
+    return PaddleOCR(
+        lang="en", device="cpu", ocr_version="PP-OCRv5", enable_mkldnn=False,
+        use_doc_orientation_classify=False, use_doc_unwarping=False,
+        use_textline_orientation=False,
+    )
 
 
 def clean_extracted_text(text: str) -> str:
@@ -51,25 +74,17 @@ def extract_pdf_selectable_text(path: Path) -> str:
 
 
 def extract_image_ocr(path: Path) -> str:
-    """Extract text from an image or scanned document using PaddleOCR if installed."""
-    if not _PADDLE_AVAILABLE:
-        logger.warning("PaddleOCR not installed; cannot OCR image or scanned document.")
-        return ""
-
+    """Extract all image/PDF pages using PaddleOCR 3.x locally."""
     try:
-        ocr = PaddleOCR(use_angle_cls=True, lang="en")
-        results = ocr.ocr(str(path), cls=True)
-        lines: list[str] = []
-        if results and results[0]:
-            for line in results[0]:
-                if line and len(line) >= 2 and line[1]:
-                    text, _confidence = line[1]
-                    if text:
-                        lines.append(str(text))
+        with _OCR_LOCK:
+            results = get_ocr().predict(str(path))
+            lines = [text for page in results for text in page["rec_texts"] if text]
         return "\n".join(lines)
+    except TextExtractionError:
+        raise
     except Exception as exc:
         logger.error("PaddleOCR execution failed: %s", exc)
-        return ""
+        raise TextExtractionError(f"Local OCR failed: {exc}") from exc
 
 
 def extract_text_from_file(file_path: Path | str, file_type: str) -> tuple[str, str]:
@@ -88,23 +103,24 @@ def extract_text_from_file(file_path: Path | str, file_type: str) -> tuple[str, 
         try:
             pdf_text = extract_pdf_selectable_text(path)
             cleaned = clean_extracted_text(pdf_text)
-            # If significant selectable text was extracted, return it
-            if len(cleaned.strip()) >= 30:
+            if cleaned:
                 return cleaned, "pdf_text"
         except Exception as exc:
             logger.warning("pypdf extraction failed on %s: %s", path.name, exc)
+            raise TextExtractionError("PDF could not be read. Upload a valid, unencrypted PDF.") from exc
 
         # Scanned PDF fallback
         ocr_text = extract_image_ocr(path)
         cleaned_ocr = clean_extracted_text(ocr_text)
         if cleaned_ocr:
             return cleaned_ocr, "paddleocr"
-        return clean_extracted_text(pdf_text if "pdf_text" in locals() else ""), "pdf_text_partial"
+        raise TextExtractionError("No readable text found in this PDF. Upload a clearer document.")
 
     if norm_type in {"png", "jpg", "jpeg"}:
         ocr_text = extract_image_ocr(path)
         cleaned_ocr = clean_extracted_text(ocr_text)
-        method = "paddleocr" if cleaned_ocr else "ocr_unavailable"
-        return cleaned_ocr, method
+        if not cleaned_ocr:
+            raise TextExtractionError("No readable text found in this image. Upload a clearer document.")
+        return cleaned_ocr, "paddleocr"
 
     return "", "unsupported_type"

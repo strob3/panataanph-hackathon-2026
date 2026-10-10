@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import { FileText, ShieldCheck, Users } from "lucide-react";
 import {
+  extractDocument,
   getAdminCampaign,
   listAdminAccounts,
   listAdminCampaigns,
@@ -116,6 +117,7 @@ function FundReview({
 
 function CampaignReview({ id, revision, onReviewed }: { id: string; revision: number; onReviewed: () => void }) {
   const [campaign, setCampaign] = useState<AdminCampaignDetail | null>(null);
+  const [extracting, setExtracting] = useState<number | null>(null);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState(false);
@@ -174,6 +176,19 @@ function CampaignReview({ id, revision, onReviewed }: { id: string; revision: nu
       setError(message(failure));
     } finally {
       setBusy(false);
+    }
+  };
+  const extract = async (documentId: number) => {
+    if (extracting !== null) return;
+    setExtracting(documentId);
+    setError("");
+    try {
+      await extractDocument(documentId);
+      setCampaign(await getAdminCampaign(id));
+    } catch (failure) {
+      setError(message(failure));
+    } finally {
+      setExtracting(null);
     }
   };
   if (!campaign)
@@ -247,12 +262,20 @@ function CampaignReview({ id, revision, onReviewed }: { id: string; revision: nu
               <p className="mt-2 text-xs text-muted">
                 {document.file_type} · {label(document.processing_status)}
               </p>
+              <button
+                type="button"
+                className="button button-secondary mt-3"
+                disabled={extracting !== null || document.processing_status === "processing"}
+                onClick={() => extract(document.id)}
+              >
+                {extracting === document.id ? "Extracting text…" : document.extraction ? "Extract text again" : "Extract text"}
+              </button>
               {document.extraction ? (
                 <dl className="mt-3 grid gap-3 text-sm sm:grid-cols-2">
                   {Object.entries(document.extraction).map(([name, value]) => (
                     <div key={name}>
                       <dt className="font-semibold capitalize">{label(name)}</dt>
-                      <dd className="mt-1 break-words text-muted">
+                      <dd className="mt-1 whitespace-pre-wrap break-words text-muted">
                         {value === null
                           ? "Not extracted"
                           : Array.isArray(value)

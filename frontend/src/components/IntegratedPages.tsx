@@ -95,6 +95,20 @@ export function SubmissionPage({
   const [donationQR, setDonationQR] = useState<File>();
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const addDonationQR = (file?: File) => {
+    if (!file) return;
+    if (
+      !["image/jpeg", "image/png"].includes(file.type) ||
+      !/\.(jpe?g|png)$/i.test(file.name) ||
+      !file.size ||
+      file.size > 10 * 1024 * 1024
+    ) {
+      setError("Choose a nonempty PNG or JPG donation QR image up to 10 MB.");
+      return;
+    }
+    setDonationQR(file);
+    setError("");
+  };
   const addFile = (key: string, file?: File) => {
     if (!file) return;
     if (
@@ -229,31 +243,35 @@ export function SubmissionPage({
                 required={Boolean(donationQR)}
                 maxLength={100}
               />
-              <label className="block min-w-0 text-sm font-semibold">
-                Donation QR image (PNG or JPG, up to 10 MB)
-                <input
-                  type="file"
-                  aria-label="Donation QR image"
-                  accept=".jpg,.jpeg,.png"
-                  className="mt-3 block w-full text-sm"
-                  onChange={(event) => {
-                    const file = event.target.files?.[0];
-                    if (!file) return;
-                    if (
-                      !["image/jpeg", "image/png"].includes(file.type) ||
-                      !/\.(jpe?g|png)$/i.test(file.name) ||
-                      !file.size || file.size > 10 * 1024 * 1024
-                    ) {
-                      setError("Choose a nonempty PNG or JPG donation QR image up to 10 MB.");
+              <div
+                className="upload-zone min-w-0"
+                onDragOver={(event) => event.preventDefault()}
+                onDrop={(event) => {
+                  event.preventDefault();
+                  if (!busy) addDonationQR(event.dataTransfer.files[0]);
+                }}
+              >
+                <label className="flex min-h-60 cursor-pointer flex-col items-center justify-center p-7 text-center">
+                  <div className="upload-icon">
+                    <Upload size={22} />
+                  </div>
+                  <span className="mt-4 text-sm font-bold">Donation QR image</span>
+                  <span className="mt-2 text-xs text-muted">PNG or JPG, up to 10 MB</span>
+                  <span className="mt-3 text-xs font-semibold text-brand">
+                    Browse files or drag and drop
+                  </span>
+                  <input
+                    type="file"
+                    aria-label="Donation QR image"
+                    accept=".jpg,.jpeg,.png"
+                    className="mt-4 max-w-full text-xs"
+                    onChange={(event) => {
+                      addDonationQR(event.target.files?.[0]);
                       event.target.value = "";
-                      return;
-                    }
-                    setDonationQR(file);
-                    setError("");
-                    event.target.value = "";
-                  }}
-                />
-              </label>
+                    }}
+                  />
+                </label>
+              </div>
             </div>
             {donationQR && (
               <div className="mt-4 flex min-w-0 items-center gap-3 rounded-xl bg-canvas p-3">

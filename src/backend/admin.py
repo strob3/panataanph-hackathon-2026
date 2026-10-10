@@ -12,6 +12,7 @@ from sqlalchemy import func, select
 from backend import crud
 from backend.auth import AdminUser, Database, UserResponse
 from backend.models import AccountReview, Campaign, Document, User, VerificationFinding
+from backend.services.llm import EXTRACTION_FIELDS, sanitize_extracted_data
 from backend.services.scoring import MIN_VERIFICATION_SCORE, score_campaign
 
 router = APIRouter(prefix="/api/admin", tags=["admin review"])
@@ -47,16 +48,23 @@ def campaign_summary(campaign: Campaign) -> dict:
 def campaign_detail(campaign: Campaign) -> dict:
     names = ["description", "purpose", "cause", "beneficiaries", "organizer_email", "organizer_phone", "organization_name", "organization_registration_number", "payment_method", "payment_details", "urgency", "updated_at"]
     documents = []
-    extraction_names = ["document_type", "issuing_authority", "permit_number", "organization_name", "purpose", "issue_date", "expiration_date", "beneficiaries", "missing_fields", "confidence_notes"]
+    extraction_names = ["document_type", "issuing_authority", "permit_number", "organization_name", "purpose", "issue_date", "expiration_date", "beneficiaries", "missing_fields", "confidence_notes", "raw_ocr_text"]
     for document in campaign.documents:
+        extraction = None
+        if document.extraction_result:
+            extraction = {name: getattr(document.extraction_result, name) for name in extraction_names}
+            supported = sanitize_extracted_data(extraction, raw_text=extraction["raw_ocr_text"] or "")
+            extraction.update({name: getattr(supported, name) for name in EXTRACTION_FIELDS})
+            extraction["missing_fields"] = json.dumps(supported.missing_fields)
         documents.append({
+            "id": document.id,
             "public_id": document.public_id,
             "original_filename": document.original_filename,
             "file_type": document.file_type,
             "file_size_bytes": document.file_size_bytes,
             "processing_status": document.processing_status,
             "url": f"/api/admin/documents/{document.public_id}",
-            "extraction": {name: getattr(document.extraction_result, name) for name in extraction_names} if document.extraction_result else None,
+            "extraction": extraction,
         })
     return {
         **campaign_summary(campaign),
